@@ -48,18 +48,19 @@ async function initSchema0() {
   try { db.run("ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'));"); } catch (_) {}
 
   // ============================================================
-  // 2. 设备表 (devices) — 来源：需求文档 §5.2
+  // 2. 设备表 (devices)
   // ============================================================
   db.run(`
     CREATE TABLE IF NOT EXISTS devices (
-      device_id         TEXT    PRIMARY KEY,
-      user_id           INTEGER,
-      device_name       TEXT    NOT NULL DEFAULT '我的设备',
-      is_virtual        INTEGER NOT NULL DEFAULT 0,
-      firmware_version  TEXT    NOT NULL DEFAULT 'V1.0.0',
-      last_active_time  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-      created_at        TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      serial_no     TEXT    NOT NULL UNIQUE,
+      user_id       INTEGER NOT NULL,
+      nickname      TEXT    NOT NULL DEFAULT '我的设备',
+      is_virtual    INTEGER NOT NULL DEFAULT 1,
+      online_status INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
     );
   `);
 
@@ -70,7 +71,7 @@ async function initSchema0() {
     CREATE TABLE IF NOT EXISTS sleep_reports (
       report_id        INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id          INTEGER NOT NULL,
-      device_id        TEXT    NOT NULL,
+      device_id        INTEGER NOT NULL,
       report_date      TEXT    NOT NULL,
       sleep_score      INTEGER NOT NULL DEFAULT 0,
       total_minutes    INTEGER NOT NULL DEFAULT 0,
@@ -86,7 +87,7 @@ async function initSchema0() {
       noise_curve      TEXT,
       created_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (user_id)   REFERENCES users(user_id)   ON DELETE CASCADE,
-      FOREIGN KEY (device_id) REFERENCES devices(device_id) ON DELETE CASCADE
+      FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
     );
   `);
 
