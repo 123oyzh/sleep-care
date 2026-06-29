@@ -1,0 +1,79 @@
+/* 登录页面样式 */
+
+/* 设置页面根节点高度，确保容器充满全屏 */
+page {
+  height: 100%;
+}
+
+/* 容器 — 充满全屏，flex 居中布局 */
+.login-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f7fa;
+  padding: 60rpx;
+  box-sizing: border-box;
+}
+
+/* 标题文字 — 大字号，深蓝色 */
+.app-title {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: #1a3a6b;
+  margin-bottom: 80rpx;
+}
+
+/* 表单区域 */
+.form-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 输入框 — 圆角边框，合适间距 */
+.login-input {
+  width: 100%;
+  height: 90rpx;
+  margin-bottom: 30rpx;
+  padding: 0 30rpx;
+  border: 2rpx solid #dcdfe6;
+  border-radius: 16rpx;
+  background-color: #ffffff;
+  font-size: 30rpx;
+  color: #333333;
+  box-sizing: border-box;
+}
+
+/* placeholder 占位文字颜色 */
+.input-placeholder {
+  color: #b0b0b0;
+}
+
+/* 登录按钮 — 蓝色背景，白色文字，圆角 */
+.login-button {
+  width: 100%;
+  height: 90rpx;
+  margin-top: 30rpx;
+  border-radius: 44rpx;
+  background-color: #1677ff;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #ffffff;
+  border: none;
+}
+
+/* 按钮按下态 */
+.login-button:active {
+  background-color: #0958d9;
+}
+
+/* 提示文字 — 灰色，小字号 */
+.password-hint {
+  margin-top: 30rpx;
+  font-size: 24rpx;
+  color: #999999;
+}

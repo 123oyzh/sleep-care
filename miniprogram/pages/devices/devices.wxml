@@ -1,0 +1,46 @@
+<!--
+  设备管理页面模板
+  展示用户绑定的虚拟设备列表，支持查看在线状态和删除设备
+-->
+<view class="devices-container">
+  <!-- 页面标题 -->
+  <view class="page-header">
+    <text class="page-title">我的设备</text>
+  </view>
+
+  <!-- 设备列表 — 可滚动区域，wx:for 循环渲染 -->
+  <scroll-view class="device-list" scroll-y>
+    <block wx:for="{{devices}}" wx:key="id">
+      <!-- 设备卡片 -->
+      <view class="device-card">
+        <!-- 设备信息行 -->
+        <view class="device-info">
+          <!-- 设备昵称 -->
+          <text class="device-nickname">{{item.nickname}}</text>
+          <!-- 设备序列号 -->
+          <text class="device-serial">序列号: {{item.serial_no}}</text>
+        </view>
+
+        <!-- 在线状态和操作区域 -->
+        <view class="device-status-row">
+          <!-- 在线状态：1 显示绿色"在线"，0 显示灰色"离线" -->
+          <text class="online-status {{item.online_status === 1 ? 'status-online' : 'status-offline'}}">
+            {{item.online_status === 1 ? '在线' : '离线'}}
+          </text>
+          <!-- 删除按钮，传入设备 id -->
+          <button class="btn-delete" size="mini" bindtap="handleDelete" data-id="{{item.id}}">删除</button>
+        </view>
+      </view>
+    </block>
+
+    <!-- 无设备时的空状态提示 -->
+    <view class="empty-tip" wx:if="{{devices.length === 0}}">
+      <text>暂无设备，点击下方按钮添加</text>
+    </view>
+  </scroll-view>
+
+  <!-- 底部添加设备按钮 — 固定在底部，绑定 handleAddDevice 事件 -->
+  <view class="bottom-bar">
+    <button class="btn-add-device" bindtap="handleAddDevice">添加虚拟设备</button>
+  </view>
+</view>

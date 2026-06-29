@@ -1,0 +1,41 @@
+<!--
+  登录页面模板
+  包含手机号输入框、密码输入框和登录按钮
+  绑定 login.js 中的 handleLogin 方法
+-->
+<view class="login-container">
+  <!-- 应用标题 -->
+  <view class="title-section">
+    <text class="app-title">智能睡眠管理</text>
+  </view>
+
+  <!-- 表单区域 -->
+  <view class="form-section">
+    <!-- 手机号输入框 -->
+    <input
+      class="login-input"
+      type="number"
+      maxlength="11"
+      placeholder="请输入手机号"
+      placeholder-class="input-placeholder"
+      value="{{phone}}"
+      bindinput="inputPhone"
+    />
+
+    <!-- 密码输入框 -->
+    <input
+      class="login-input"
+      type="password"
+      placeholder="请输入密码"
+      placeholder-class="input-placeholder"
+      value="{{password}}"
+      bindinput="inputPassword"
+    />
+
+    <!-- 登录按钮，点击触发 handleLogin 方法 -->
+    <button class="login-button" bindtap="handleLogin">登录</button>
+
+    <!-- 固定密码提示文字 -->
+    <text class="password-hint">固定密码: 123456</text>
+  </view>
+</view>

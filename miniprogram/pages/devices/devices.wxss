@@ -1,0 +1,111 @@
+/* 设备管理页面样式 */
+
+/* 设置页面根节点高度 */
+page {
+  height: 100%;
+}
+
+/* 容器 — 全屏 flex 布局，底部按钮固定 */
+.devices-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #f5f7fa;
+  padding: 30rpx;
+  box-sizing: border-box;
+}
+
+/* 页面标题 */
+.page-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1a3a6b;
+  display: block;
+  margin-bottom: 30rpx;
+}
+
+/* 设备列表 — flex:1 占满剩余空间，可滚动 */
+.device-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 设备卡片 */
+.device-card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 30rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+
+/* 设备信息区 */
+.device-nickname {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.device-serial {
+  font-size: 26rpx;
+  color: #999;
+  margin-top: 8rpx;
+  display: block;
+}
+
+/* 状态与操作行 */
+.device-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20rpx;
+}
+
+/* 在线状态 */
+.online-status {
+  font-size: 26rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+}
+.status-online {
+  color: #52c41a;
+  background: #f6ffed;
+}
+.status-offline {
+  color: #999;
+  background: #f5f5f5;
+}
+
+/* 删除按钮 */
+.btn-delete {
+  font-size: 24rpx;
+  color: #ff4d4f;
+  background: #fff;
+  border: 1rpx solid #ff4d4f;
+  border-radius: 8rpx;
+  padding: 0 20rpx;
+}
+
+/* 空状态提示 */
+.empty-tip {
+  text-align: center;
+  color: #bbb;
+  font-size: 28rpx;
+  padding: 120rpx 0;
+}
+
+/* 底部添加按钮 — 固定在底部 */
+.bottom-bar {
+  padding: 30rpx 0;
+}
+.btn-add-device {
+  width: 100%;
+  height: 88rpx;
+  background: #1677ff;
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 600;
+  border-radius: 44rpx;
+  border: none;
+}
