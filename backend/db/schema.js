@@ -85,6 +85,7 @@ async function initSchema0() {
       respiration_curve TEXT,
       stage_curve       TEXT,
       noise_curve       TEXT,
+      noise_json        TEXT,
       sleep_stages_json TEXT,     -- 存储48条睡眠分期JSON数组(每10分钟一个数据点，编码0=清醒/1=浅睡/2=深睡/3=REM)
       created_at        TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (user_id)   REFERENCES users(user_id)   ON DELETE CASCADE,
@@ -92,7 +93,8 @@ async function initSchema0() {
     );
   `);
 
-  // 兼容已有数据库：尝试添加 sleep_stages_json 列（若已存在则忽略错误）
+  // 兼容已有数据库：尝试添加 noise_json 和 sleep_stages_json 列（若已存在则忽略错误）
+  try { db.run("ALTER TABLE sleep_reports ADD COLUMN noise_json TEXT;"); } catch (_) {}
   try { db.run("ALTER TABLE sleep_reports ADD COLUMN sleep_stages_json TEXT;"); } catch (_) {}
 
   // 高频查询索引：按用户+日期查询每日报告

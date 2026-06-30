@@ -95,6 +95,27 @@
     </view>
   </view>
 
+  <!-- 环境噪音曲线图卡片 — 与上方图表间距16px -->
+  <view class="section-card card noise-section">
+    <view class="section-header">
+      <text class="noise-title">环境噪音</text>
+      <text class="section-subtitle">24小时环境噪音监测，共 {{noiseData.noise.length || 0}} 个数据点</text>
+    </view>
+
+    <!-- 噪音图表区域 — ec-canvas 组件 -->
+    <view class="noise-chart-wrapper" wx:if="{{!loading}}">
+      <ec-canvas canvas-id="mychart-noise" ec="{{noiseEc}}"></ec-canvas>
+    </view>
+
+    <!-- 噪音图例 -->
+    <view class="legend-row">
+      <view class="legend-item">
+        <view class="legend-dot" style="background-color: #4A90D9;"></view>
+        <text class="legend-text">环境噪音 (dB)</text>
+      </view>
+    </view>
+  </view>
+
   <!-- 睡眠阶段时长分布 -->
   <view class="section-card card">
     <view class="section-header">

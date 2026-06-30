@@ -223,6 +223,38 @@ page {
   height: 100%;
 }
 
+/* ========== 噪音图表容器 ========== */
+
+/* 噪音图表与上方分期图表间距 16px */
+.noise-section {
+  margin-top: 32rpx;             /* ≈16px */
+}
+
+/* 噪音图表标题 — 16px 加粗 #1a2c3e */
+.noise-title {
+  font-size: 32rpx;              /* ≈16px */
+  font-weight: 700;
+  color: #1a2c3e;
+  display: block;
+  margin-bottom: 16rpx;          /* ≈8px 下边距 */
+}
+
+/* 噪音图表容器 — 左右12px 上下8px 白色 圆角8px 阴影 */
+.noise-chart-wrapper {
+  margin: 16rpx 24rpx;           /* ≈8px 上下, ≈12px 左右 */
+  padding: 16rpx 0;              /* 内边距 */
+  height: 500rpx;                /* ≈250px */
+  background: #ffffff;
+  border-radius: 16rpx;          /* ≈8px */
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.noise-chart-wrapper ec-canvas {
+  width: 100%;
+  height: 100%;
+}
+
 /* ========== 底部图例 ========== */
 .legend-row {
   display: flex;
