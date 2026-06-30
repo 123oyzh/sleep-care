@@ -112,3 +112,20 @@ page {
   margin-top: 6rpx;
   display: block;
 }
+
+/* ========== 查看详细分期按钮 ========== */
+.report-action {
+  margin-top: 30rpx;
+}
+
+.report-action button {
+  width: 100%;
+  background: linear-gradient(135deg, #4A90D9 0%, #357ABD 100%);
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+  border-radius: 32rpx;
+  padding: 8rpx 0;
+  border: none;
+  box-shadow: 0 4rpx 16rpx rgba(74, 144, 217, 0.25);
+}

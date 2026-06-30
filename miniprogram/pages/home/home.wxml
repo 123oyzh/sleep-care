@@ -60,6 +60,11 @@
 
     </view>
 
+    <!-- 查看详细分期按钮 -->
+    <view class="report-action">
+      <button bindtap="goToReport">查看详细分期</button>
+    </view>
+
   </view>
 
 </view>

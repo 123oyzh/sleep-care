@@ -86,5 +86,12 @@ Page({
         if (callback) callback();
       }
     });
+  },
+
+  /**
+   * 跳转到睡眠报告页 — 查看详细分期图表
+   */
+  goToReport() {
+    wx.navigateTo({ url: '/pages/report/report' });
   }
 });

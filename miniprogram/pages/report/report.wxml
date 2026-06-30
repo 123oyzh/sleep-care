@@ -1,0 +1,159 @@
+<!--
+  睡眠报告页面模板
+  展示日期选择器、睡眠评分摘要、关键指标卡片、睡眠分期图表、异常事件列表
+  数据由 report.js 调用 GET /api/sleep/stages 与 GET /api/sleep/report/daily 接口获取
+-->
+<view class="report-container">
+
+  <!-- 日期选择器 — mode="date"，绑定 selectedDate -->
+  <view class="date-picker-row">
+    <picker mode="date" value="{{selectedDate}}" bindchange="onDateChange">
+      <view class="date-display card">
+        <text class="date-text">{{selectedDate}}</text>
+        <text class="date-arrow">▼</text>
+      </view>
+    </picker>
+  </view>
+
+  <!-- 睡眠评分大卡片 -->
+  <view class="score-card card">
+    <view class="score-header">
+      <text class="score-label">睡眠评分</text>
+      <text class="score-grade">{{report.grade || '良好'}}</text>
+    </view>
+    <view class="score-circle">
+      <text class="score-value">{{report.sleep_score || 0}}</text>
+      <text class="score-unit">分</text>
+    </view>
+    <text class="score-tips">您的睡眠状况整体{{report.grade || '良好'}}，继续保持规律作息。</text>
+  </view>
+
+  <!-- 关键指标摘要 -->
+  <view class="summary-grid">
+    <view class="summary-item card">
+      <text class="summary-icon">🌙</text>
+      <text class="summary-value">{{report.totalMinutesText || '0h 0m'}}</text>
+      <text class="summary-label">总睡眠时长</text>
+    </view>
+    <view class="summary-item card">
+      <text class="summary-icon">🛌</text>
+      <text class="summary-value">{{report.deepPercent || '0%'}}</text>
+      <text class="summary-label">深睡比例</text>
+    </view>
+    <view class="summary-item card">
+      <text class="summary-icon">👁</text>
+      <text class="summary-value">{{report.awakeCount || 0}}</text>
+      <text class="summary-label">觉醒次数</text>
+    </view>
+    <view class="summary-item card">
+      <text class="summary-icon">❤️</text>
+      <text class="summary-value">{{report.avg_heart_rate || 0}}</text>
+      <text class="summary-label">平均心率</text>
+    </view>
+  </view>
+
+  <!-- 睡眠分期图表卡片 -->
+  <view class="section-card card">
+    <view class="section-header">
+      <text class="section-title">睡眠分期</text>
+      <text class="section-subtitle">每 10 分钟一个阶段，共 {{stages.count || 0}} 个数据点</text>
+    </view>
+
+    <!-- 加载中状态 -->
+    <view class="loading-box" wx:if="{{loading}}">
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <!-- 错误提示 -->
+    <view class="error-box" wx:elif="{{errorMsg}}">
+      <text class="error-text">{{errorMsg}}</text>
+    </view>
+
+    <!-- 图表区域 — ec-canvas 组件 -->
+    <view class="chart-wrapper" wx:else>
+      <ec-canvas canvas-id="sleep-stages-chart" ec="{{ec}}"></ec-canvas>
+    </view>
+
+    <!-- 图例 -->
+    <view class="legend-row">
+      <view class="legend-item">
+        <view class="legend-dot" style="background-color: #7aa0ff;"></view>
+        <text class="legend-text">深睡</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-dot" style="background-color: #a7c3ff;"></view>
+        <text class="legend-text">浅睡</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-dot" style="background-color: #ffd6a7;"></view>
+        <text class="legend-text">REM</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-dot" style="background-color: #ff9f9f;"></view>
+        <text class="legend-text">清醒</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 睡眠阶段时长分布 -->
+  <view class="section-card card">
+    <view class="section-header">
+      <text class="section-title">睡眠结构</text>
+    </view>
+    <view class="stage-bars">
+      <view class="stage-bar-item">
+        <view class="stage-bar-info">
+          <text class="stage-name">深睡</text>
+          <text class="stage-time">{{report.deep_minutes || 0}} 分钟</text>
+        </view>
+        <view class="stage-bar-bg">
+          <view class="stage-bar-fill deep" style="width: {{report.deepPercent || '0%'}};"></view>
+        </view>
+      </view>
+      <view class="stage-bar-item">
+        <view class="stage-bar-info">
+          <text class="stage-name">浅睡</text>
+          <text class="stage-time">{{report.light_minutes || 0}} 分钟</text>
+        </view>
+        <view class="stage-bar-bg">
+          <view class="stage-bar-fill light" style="width: {{report.lightPercent || '0%'}};"></view>
+        </view>
+      </view>
+      <view class="stage-bar-item">
+        <view class="stage-bar-info">
+          <text class="stage-name">REM</text>
+          <text class="stage-time">{{report.rem_minutes || 0}} 分钟</text>
+        </view>
+        <view class="stage-bar-bg">
+          <view class="stage-bar-fill rem" style="width: {{report.remPercent || '0%'}};"></view>
+        </view>
+      </view>
+      <view class="stage-bar-item">
+        <view class="stage-bar-info">
+          <text class="stage-name">清醒</text>
+          <text class="stage-time">{{report.wake_minutes || 0}} 分钟</text>
+        </view>
+        <view class="stage-bar-bg">
+          <view class="stage-bar-fill wake" style="width: {{report.wakePercent || '0%'}};"></view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 异常事件列表 -->
+  <view class="section-card card" wx:if="{{report.events && report.events.length > 0}}">
+    <view class="section-header">
+      <text class="section-title">异常事件</text>
+    </view>
+    <view class="event-list">
+      <view class="event-item" wx:for="{{report.events}}" wx:key="index">
+        <view class="event-icon">⚠️</view>
+        <view class="event-body">
+          <text class="event-type">{{item.typeText}}</text>
+          <text class="event-time">{{item.time}} · 持续 {{item.duration}} 秒</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+</view>
