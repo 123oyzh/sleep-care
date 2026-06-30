@@ -16,9 +16,9 @@ Page({
   onLoad() {
     const token = getApp().getToken();
     if (token) {
-      // 本地已有 token，免登录直接跳转设备页
+      // 本地已有 token，免登录直接跳转首页
       wx.navigateTo({
-        url: '/pages/devices/devices'
+        url: '/pages/home/home'
       });
     }
   },
@@ -86,9 +86,9 @@ Page({
             title: '登录成功',
             icon: 'success'
           });
-          // 跳转到设备管理页
+          // 跳转到首页
           wx.navigateTo({
-            url: '/pages/devices/devices'
+            url: '/pages/home/home'
           });
         } else {
           // 后台返回业务错误（如账号密码错误）

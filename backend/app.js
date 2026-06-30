@@ -489,6 +489,172 @@ app.delete('/api/devices/:id', authenticateToken, async (req, res) => {
 });
 
 // ============================================================
+// 睡眠报告接口（受 authenticateToken 中间件保护）
+// ============================================================
+
+/**
+ * 确定性伪随机数生成器（Mulberry32 算法）
+ *
+ * 同一 seed 始终产生相同的随机数序列，确保同一用户同一天的模拟数据可复现。
+ * 生成 0-1 之间的均匀分布浮点数。
+ *
+ * @param {number} seed - 随机种子（整数）
+ * @returns {Function} 每次调用返回 0-1 随机浮点数的函数
+ */
+function seededRandom(seed) {
+  let state = seed >>> 0; // 转为无符号 32 位整数
+  return function () {
+    let t = state += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * GET /api/sleep/report/daily — 获取指定日期的睡眠报告
+ *
+ * 如果报告不存在，则根据用户设定自动生成模拟数据并持久化。
+ * 同一用户同一天的数据由确定性伪随机算法生成，保证可复现。
+ *
+ * 查询参数：date (YYYY-MM-DD)，默认昨天
+ * 请求头：Authorization: Bearer <token>
+ */
+app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const userId = req.user.id; // 从 JWT 解析的用户 ID
+
+    // --- 解析日期参数，默认取昨天 ---
+    let date = req.query.date;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      date = yesterday.toISOString().substring(0, 10);
+    }
+
+    // --- 获取用户的第一台设备，无设备时 deviceId 暂用 0 ---
+    const device = dbGetOne(db,
+      'SELECT id FROM devices WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    const deviceId = device ? device.id : 0;
+
+    // --- 先查询该用户+设备+日期是否已有报告 ---
+    const existing = dbGetOne(db,
+      'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
+      [userId, deviceId, date]
+    );
+
+    // 如果已存在，直接返回（无需重新生成）
+    // 根据 wake_minutes 估算觉醒次数（每次觉醒约 3 分钟），补到响应中
+    if (existing) {
+      existing.awake_count = existing.wake_minutes > 0
+        ? Math.max(1, Math.round(existing.wake_minutes / 3))
+        : 0;
+      return res.json({
+        code: 0,
+        message: 'success',
+        data: existing
+      });
+    }
+
+    // --- 不存在则使用 seededRandom 生成确定性模拟数据 ---
+    // 种子 = userId × 10000 + 日期数字（保证用户+日期唯一确定性）
+    const seed = userId * 10000 + parseInt(date.replace(/-/g, ''), 10);
+    const rand = seededRandom(seed);
+
+    // 睡眠评分 60-100
+    const sleepScore = Math.floor(60 + rand() * 40);
+
+    // 总睡眠时长 300-480 分钟
+    const totalMinutes = Math.floor(300 + rand() * 180);
+
+    // 觉醒次数 0-5 次
+    const awakeCount = Math.floor(rand() * 6);
+
+    // 每次觉醒 2-5 分钟，计算总觉醒时长
+    let wakeMinutes = 0;
+    for (let i = 0; i < awakeCount; i++) {
+      wakeMinutes += 2 + Math.floor(rand() * 4);
+    }
+
+    // 深睡比例 0.15-0.35
+    const deepRatio = 0.15 + rand() * 0.20;
+    // REM 比例 0.20-0.25
+    const remRatio = 0.20 + rand() * 0.05;
+    // 有效睡眠总分钟 = 总时长 - 觉醒时长
+    const effectiveMinutes = totalMinutes - wakeMinutes;
+    const deepMinutes = Math.floor(effectiveMinutes * deepRatio);
+    const remMinutes = Math.floor(effectiveMinutes * remRatio);
+    // 浅睡 = 剩余部分（避免因取整导致总和偏差）
+    const lightMinutes = effectiveMinutes - deepMinutes - remMinutes;
+
+    // 平均心率 55-80
+    const avgHeartRate = 55 + Math.floor(rand() * 25);
+
+    // JSON 曲线/事件字段暂存为空数组，为后续图表功能预留
+    const emptyJsonArray = '[]';
+
+    // --- INSERT INTO sleep_reports ---
+    try {
+      db.run(
+        `INSERT INTO sleep_reports
+         (user_id, device_id, report_date, sleep_score, total_minutes,
+          deep_minutes, light_minutes, rem_minutes, wake_minutes,
+          avg_heart_rate, events_json, heart_rate_curve, respiration_curve,
+          stage_curve, noise_curve)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId, deviceId, date, sleepScore, totalMinutes,
+          deepMinutes, lightMinutes, remMinutes, wakeMinutes,
+          avgHeartRate, emptyJsonArray, emptyJsonArray, emptyJsonArray,
+          emptyJsonArray, emptyJsonArray
+        ]
+      );
+
+      // 持久化到磁盘
+      await saveDb0(db);
+    } catch (insertErr) {
+      // --- 处理 UNIQUE 约束异常（并发场景）---
+      if (insertErr.message && insertErr.message.includes('UNIQUE')) {
+        // 并发时另一请求已插入，重新查询并返回
+        const retry = dbGetOne(db,
+          'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
+          [userId, deviceId, date]
+        );
+        retry.awake_count = retry.wake_minutes > 0
+          ? Math.max(1, Math.round(retry.wake_minutes / 3))
+          : 0;
+        return res.json({
+          code: 0,
+          message: 'success',
+          data: retry
+        });
+      }
+      throw insertErr;
+    }
+
+    // --- 查询新插入的记录，补上 awake_count 后返回 ---
+    const report = dbGetOne(db,
+      'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
+      [userId, deviceId, date]
+    );
+    report.awake_count = awakeCount;
+
+    res.json({
+      code: 0,
+      message: 'success',
+      data: report
+    });
+
+  } catch (err) {
+    console.error('[sleep/report/daily] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+// ============================================================
 // 异步启动
 // ============================================================
 async function start() {

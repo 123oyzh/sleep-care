@@ -1,0 +1,65 @@
+<!--
+  首页模板
+  展示昨日睡眠报告概览：评分、时长、深睡比例、觉醒次数
+  数据由 home.js 调用 GET /api/sleep/report/daily 接口获取
+  数据库字段：sleep_score, total_sleep_minutes, deep_sleep_minutes, awake_count
+-->
+<view class="home-container">
+
+  <!-- 页面标题 -->
+  <view class="page-header">
+    <text class="page-title">昨日睡眠报告</text>
+  </view>
+
+  <!-- 加载中状态 -->
+  <view class="loading-box" wx:if="{{loading}}">
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- 错误/空数据提示 -->
+  <view class="error-box" wx:elif="{{errorMsg}}">
+    <text class="error-text">{{errorMsg}}</text>
+  </view>
+
+  <!-- 睡眠数据为空时的提示 -->
+  <view class="error-box" wx:elif="{{!sleepData.sleep_score && sleepData.sleep_score !== 0}}">
+    <text class="error-text">暂无昨日睡眠数据</text>
+  </view>
+
+  <!-- 正常数据展示 -->
+  <view class="report-content" wx:else>
+
+    <!-- 主卡片 — 睡眠评分（大号数字 + 标签） -->
+    <view class="score-card">
+      <text class="score-number">{{sleepData.sleep_score || '--'}}</text>
+      <text class="score-label">睡眠评分</text>
+    </view>
+
+    <!-- 三项辅助指标 — 三列网格布局 -->
+    <view class="metrics-grid">
+
+      <!-- 总睡眠时长（分钟） -->
+      <view class="metric-item">
+        <text class="metric-value">{{sleepData.total_sleep_minutes || 0}}</text>
+        <text class="metric-unit">分钟</text>
+        <text class="metric-label">总睡眠时长</text>
+      </view>
+
+      <!-- 深睡比例（%）—— deepRatio 由 JS 根据 deep_sleep_minutes / total_sleep_minutes 计算 -->
+      <view class="metric-item">
+        <text class="metric-value">{{deepRatio}}%</text>
+        <text class="metric-label">深睡比例</text>
+      </view>
+
+      <!-- 觉醒次数（次） -->
+      <view class="metric-item">
+        <text class="metric-value">{{sleepData.awake_count || 0}}</text>
+        <text class="metric-unit">次</text>
+        <text class="metric-label">觉醒次数</text>
+      </view>
+
+    </view>
+
+  </view>
+
+</view>

@@ -1,0 +1,114 @@
+/* 首页样式 */
+
+/*
+  页面根节点 — 设置高度允许滚动
+  必须设置 overflow-y: auto 确保内容不足时也能触发下拉刷新
+*/
+page {
+  height: 100vh;
+  overflow-y: auto;
+}
+
+/* 页面容器 — 充满全屏，flex 列布局 */
+.home-container {
+  width: 100vw;
+  min-height: 100vh;
+  background-color: #f5f7fa;
+  display: flex;
+  flex-direction: column;
+  padding: 30rpx;
+  box-sizing: border-box;
+}
+
+/* 页面标题 — 18px 加粗 深灰 */
+.page-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #333333;
+  display: block;
+  margin-bottom: 30rpx;
+}
+
+/* 加载中 / 错误提示 — 居中, 灰色 */
+.loading-box,
+.error-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.loading-text,
+.error-text {
+  font-size: 28rpx;
+  color: #999999;
+}
+
+/* ========== 主卡片 — 睡眠评分 ========== */
+.score-card {
+  background: linear-gradient(135deg, #4A90D9 0%, #357ABD 100%);
+  border-radius: 32rpx;         /* ≈16px */
+  padding: 48rpx 0;             /* ≈24px 上下内边距 */
+  text-align: center;
+  margin-bottom: 30rpx;
+  box-shadow: 0 8rpx 32rpx rgba(74, 144, 217, 0.25);
+}
+
+/* 评分大号数字 — 64px 加粗 白色 */
+.score-number {
+  font-size: 128rpx;            /* ≈64px */
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1;
+}
+
+/* 评分标签 — 14px 半透明白色 */
+.score-label {
+  font-size: 28rpx;             /* ≈14px */
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 12rpx;
+  display: block;
+}
+
+/* ========== 三项辅助指标 — flex 水平均匀分布 ========== */
+.metrics-grid {
+  display: flex;
+  justify-content: space-evenly;  /* 均匀分布 */
+}
+
+/* 单项指标 — 数值加粗 + 单位小字 */
+.metric-item {
+  flex: 1;
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 30rpx 16rpx;
+  text-align: center;
+  margin: 0 10rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+.metric-item:first-child {
+  margin-left: 0;
+}
+.metric-item:last-child {
+  margin-right: 0;
+}
+
+/* 指标数值 — 加粗 */
+.metric-value {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #333333;
+}
+
+/* 指标单位 — 小字灰色 */
+.metric-unit {
+  font-size: 24rpx;
+  color: #999999;
+}
+
+/* 指标标签 — 小字灰色 */
+.metric-label {
+  font-size: 24rpx;
+  color: #999999;
+  margin-top: 6rpx;
+  display: block;
+}
