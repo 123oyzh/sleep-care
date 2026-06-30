@@ -15,6 +15,54 @@
     </picker>
   </view>
 
+  <!-- 视图切换控件 — 日/周/月视图 -->
+  <view class="period-switch">
+    <view
+      class="period-btn {{currentPeriod === 'day' ? 'period-btn--active' : ''}}"
+      bindtap="switchPeriod"
+      data-period="day"
+    >
+      <text>日视图</text>
+    </view>
+    <view
+      class="period-btn {{currentPeriod === 'week' ? 'period-btn--active' : ''}}"
+      bindtap="switchPeriod"
+      data-period="week"
+    >
+      <text>周视图</text>
+    </view>
+    <view
+      class="period-btn {{currentPeriod === 'month' ? 'period-btn--active' : ''}}"
+      bindtap="switchPeriod"
+      data-period="month"
+    >
+      <text>月视图</text>
+    </view>
+  </view>
+
+  <!-- 睡眠评分趋势标题 -->
+  <view class="section-title-row">
+    <text class="section-title">睡眠评分趋势</text>
+  </view>
+
+  <!-- 趋势图表区域 — 独立 ec-canvas 组件 -->
+  <view class="section-card card">
+    <!-- 趋势图加载中 -->
+    <view class="loading-box" wx:if="{{summaryLoading}}">
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <!-- 趋势图表 -->
+    <view class="trend-chart-wrapper" wx:else>
+      <ec-canvas canvas-id="summary-chart" ec="{{summaryEc}}"></ec-canvas>
+    </view>
+
+    <!-- 平均分参考线提示 -->
+    <view class="trend-avg" wx:if="{{summaryData && summaryData.avg_score}}">
+      <text class="trend-avg-text">周期平均分：{{summaryData.avg_score}} 分</text>
+    </view>
+  </view>
+
   <!-- 睡眠评分大卡片 -->
   <view class="score-card card">
     <view class="score-header">

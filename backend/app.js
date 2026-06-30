@@ -629,7 +629,24 @@ function generateNoiseTimeLabels() {
 }
 
 /**
- * GET /api/sleep/report/daily — 获取指定日期的睡眠报告
+ * 获取指定日期(userId + dateStr)的确定性睡眠评分 (60-100)
+ *
+ * 使用与 /api/sleep/report/daily 完全相同的 seededRandom 种子算法，
+ * 保证同一用户同一天返回的评分值与数据库中已有的评分一致。
+ *
+ * @param {number} userId - 用户 ID
+ * @param {string} dateStr - 日期字符串 (YYYY-MM-DD)
+ * @returns {number} 60-100 的整数评分
+ */
+function getDailyScore(userId, dateStr) {
+  const seed = userId * 10000 + parseInt(dateStr.replace(/-/g, ''), 10);
+  const rand = seededRandom(seed);
+  // 跳过 generateBaseMetrics 里前面的 rand() 调用以达到 sleep_score 位置
+  return Math.floor(60 + rand() * 40);
+}
+
+/**
+ * GET /api/sleep/summary — 获取睡眠评分趋势汇总
  *
  * 如果报告不存在，则根据用户设定自动生成模拟数据并持久化。
  * 同一用户同一天的数据由确定性伪随机算法生成，保证可复现。
@@ -1021,6 +1038,129 @@ app.get('/api/sleep/noise', authenticateToken, async (req, res) => {
 
   } catch (err) {
     console.error('[sleep/noise] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/sleep/summary — 获取睡眠评分趋势汇总
+ *
+ * 根据 period 参数返回不同粒度的评分趋势数据：
+ *   day   — 最近 7 天每日评分
+ *   week  — 最近 6 周每周平均评分（自然周，周日开始）
+ *   month — 最近 6 月每月平均评分（自然月）
+ *
+ * 查询参数：period (day|week|month), date (YYYY-MM-DD, 默认昨天)
+ * 请求头：Authorization: Bearer <token>
+ */
+app.get('/api/sleep/summary', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // --- 解析参数 ---
+    const period = req.query.period || 'day';
+
+    let baseDate = req.query.date;
+    if (!baseDate || !/^\d{4}-\d{2}-\d{2}$/.test(baseDate)) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      baseDate = yesterday.toISOString().substring(0, 10);
+    }
+
+    let labels = [];
+    let scores = [];
+
+    // --- 日视图：最近 7 天（含基准日期往前 6 天）---
+    if (period === 'day') {
+      const base = new Date(baseDate);
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(base);
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().substring(0, 10);
+
+        labels.push(dateStr.substring(5)); // "MM-DD"
+        scores.push(getDailyScore(userId, dateStr));
+      }
+    }
+
+    // --- 周视图：最近 6 周，按自然周（周日开始）分组求平均 ---
+    else if (period === 'week') {
+      const base = new Date(baseDate);
+
+      for (let w = 5; w >= 0; w--) {
+        // 基准日期所在周（周日为起点）倒退 w 周
+        const weekStart = new Date(base);
+        const dayOfWeek = weekStart.getDay(); // 0=周日
+        weekStart.setDate(weekStart.getDate() - dayOfWeek - w * 7);
+
+        let weekSum = 0;
+        let weekCount = 0;
+
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(weekStart);
+          d.setDate(d.getDate() + i);
+          if (d > new Date()) break; // 不超过今天
+          const dateStr = d.toISOString().substring(0, 10);
+          weekSum += getDailyScore(userId, dateStr);
+          weekCount++;
+        }
+
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        labels.push(
+          weekStart.toISOString().substring(0, 10) + ' ~ ' +
+          weekEnd.toISOString().substring(0, 10)
+        );
+        scores.push(weekCount > 0 ? Math.round(weekSum / weekCount) : 0);
+      }
+    }
+
+    // --- 月视图：最近 6 个月，按自然月分组求平均 ---
+    else if (period === 'month') {
+      const base = new Date(baseDate);
+
+      for (let m = 5; m >= 0; m--) {
+        const year = base.getFullYear();
+        const month = base.getMonth() + 1 - m;
+
+        // 处理跨年
+        const date = new Date(year, month - 1, 1);
+        const targetYear = date.getFullYear();
+        const targetMonth = date.getMonth() + 1;
+
+        // 该月总天数
+        const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+
+        let monthSum = 0;
+        let monthCount = 0;
+
+        for (let day = 1; day <= daysInMonth; day++) {
+          const d = new Date(targetYear, targetMonth - 1, day);
+          if (d > new Date()) break; // 不超过今天
+          const dateStr = d.toISOString().substring(0, 10);
+          monthSum += getDailyScore(userId, dateStr);
+          monthCount++;
+        }
+
+        labels.push(targetYear + '-' + String(targetMonth).padStart(2, '0'));
+        scores.push(monthCount > 0 ? Math.round(monthSum / monthCount) : 0);
+      }
+    }
+
+    // --- 计算总平均分 ---
+    const totalSum = scores.reduce((a, b) => a + b, 0);
+    const avgScore = scores.length > 0 ? Math.round(totalSum / scores.length) : 0;
+
+    // --- 返回趋势数据 ---
+    res.json({
+      code: 0,
+      message: 'success',
+      data: { period, labels, scores, avg_score: avgScore }
+    });
+
+  } catch (err) {
+    console.error('[sleep/summary] 异常:', err.message);
     res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
   }
 });

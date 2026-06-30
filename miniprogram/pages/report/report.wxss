@@ -52,6 +52,72 @@ page {
   color: #8da4c1;
 }
 
+/* ========== 视图切换控件 ========== */
+
+/* 按钮容器 — 水平居中，按钮间距 10px */
+.period-switch {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 24rpx;
+  gap: 20rpx;                     /* ≈10px */
+}
+
+/* 未选中 — 白底、灰色边框 #d1d5db、深色文字、圆角 20px */
+.period-btn {
+  text-align: center;
+  padding: 12rpx 40rpx;           /* ≈6px 20px */
+  border-radius: 40rpx;           /* ≈20px */
+  font-size: 26rpx;
+  font-weight: 500;
+  background: #ffffff;
+  color: #5b7094;
+  border: 2rpx solid #d1d5db;
+  transition: all 0.25s ease;
+}
+
+/* 选中 — #4A90D9 蓝色背景、白色文字、圆角 20px */
+.period-btn--active {
+  background: #4A90D9;
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 4rpx 12rpx rgba(74, 144, 217, 0.3);
+}
+
+/* 趋势标题行 */
+.section-title-row {
+  margin-bottom: 16rpx;
+  padding: 0 4rpx;
+}
+
+/* ========== 趋势图表容器 ========== */
+.trend-chart-wrapper {
+  height: 400rpx;                /* ≈200px */
+  border-radius: 16rpx;
+  overflow: hidden;
+  background: #fafbfc;
+}
+
+.trend-chart-wrapper ec-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* 平均分提示行 */
+.trend-avg {
+  text-align: center;
+  margin-top: 16rpx;
+  padding: 12rpx 0;
+  background: rgba(74, 144, 217, 0.06);
+  border-radius: 12rpx;
+}
+
+.trend-avg-text {
+  font-size: 26rpx;
+  color: #5b7094;
+  font-weight: 500;
+}
+
 /* ========== 睡眠评分大卡片 ========== */
 .score-card {
   padding: 40rpx 32rpx;
