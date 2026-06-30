@@ -611,6 +611,24 @@ function generateTimeLabels() {
 }
 
 /**
+ * 生成 144 个噪音时间标签 ["00:00","00:10",...,"23:50"]
+ * 每 10 分钟一个点，覆盖完整 24 小时
+ *
+ * @returns {string[]} 格式化时间字符串数组
+ */
+function generateNoiseTimeLabels() {
+  const labels = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 10) {
+      labels.push(
+        String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0')
+      );
+    }
+  }
+  return labels;
+}
+
+/**
  * GET /api/sleep/report/daily — 获取指定日期的睡眠报告
  *
  * 如果报告不存在，则根据用户设定自动生成模拟数据并持久化。
@@ -676,13 +694,13 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
          (user_id, device_id, report_date, sleep_score, total_minutes,
           deep_minutes, light_minutes, rem_minutes, wake_minutes,
           avg_heart_rate, events_json, heart_rate_curve, respiration_curve,
-          stage_curve, noise_curve, sleep_stages_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          stage_curve, noise_curve, noise_json, sleep_stages_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           userId, deviceId, date, metrics.sleepScore, metrics.totalMinutes,
           metrics.deepMinutes, metrics.lightMinutes, metrics.remMinutes, metrics.wakeMinutes,
           metrics.avgHeartRate, emptyJsonArray, emptyJsonArray, emptyJsonArray,
-          emptyJsonArray, emptyJsonArray, emptyJsonArray
+          emptyJsonArray, emptyJsonArray, emptyJsonArray, emptyJsonArray
         ]
       );
 
@@ -808,13 +826,13 @@ app.get('/api/sleep/stages', authenticateToken, async (req, res) => {
            (user_id, device_id, report_date, sleep_score, total_minutes,
             deep_minutes, light_minutes, rem_minutes, wake_minutes,
             avg_heart_rate, events_json, heart_rate_curve, respiration_curve,
-            stage_curve, noise_curve, sleep_stages_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            stage_curve, noise_curve, noise_json, sleep_stages_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             userId, deviceId, date, metrics.sleepScore, metrics.totalMinutes,
             metrics.deepMinutes, metrics.lightMinutes, metrics.remMinutes, metrics.wakeMinutes,
             metrics.avgHeartRate, emptyJsonArray, emptyJsonArray, emptyJsonArray,
-            emptyJsonArray, emptyJsonArray, stagesJson
+            emptyJsonArray, emptyJsonArray, emptyJsonArray, stagesJson
           ]
         );
         await saveDb0(db);
@@ -848,6 +866,161 @@ app.get('/api/sleep/stages', authenticateToken, async (req, res) => {
 
   } catch (err) {
     console.error('[sleep/stages] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/sleep/noise — 获取指定日期的环境噪音数据
+ *
+ * 返回 144 个噪音数据点（每 10 分钟一个，覆盖 24 小时）及对应时间标签。
+ * 夜间 (22:00-06:00) 30-40dB，白天 (06:00-22:00) 45-65dB。
+ *
+ * 如果 noise_json 已存在且非空，直接解析返回；
+ * 否则使用 seededRandom 生成确定性噪音序列并持久化。
+ *
+ * 查询参数：date (YYYY-MM-DD)，默认昨天
+ * 请求头：Authorization: Bearer <token>
+ */
+app.get('/api/sleep/noise', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const userId = req.user.id;
+
+    // --- 解析日期参数，默认取昨天 ---
+    let date = req.query.date;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      date = yesterday.toISOString().substring(0, 10);
+    }
+
+    // --- 获取用户第一台设备，无设备时 deviceId 暂用 0 ---
+    const device = dbGetOne(db,
+      'SELECT id FROM devices WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    const deviceId = device ? device.id : 0;
+
+    // --- 查询 sleep_reports 表中该用户+设备+日期的记录 ---
+    const existing = dbGetOne(db,
+      'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
+      [userId, deviceId, date]
+    );
+
+    // 如果记录存在且 noise_json 不为空，直接解析返回
+    if (existing && existing.noise_json) {
+      try {
+        const noise = JSON.parse(existing.noise_json);
+        if (Array.isArray(noise) && noise.length > 0) {
+          const labels = generateNoiseTimeLabels();
+          return res.json({
+            code: 0,
+            message: 'success',
+            data: { date, noise, labels }
+          });
+        }
+      } catch (_) {
+        // JSON 解析失败，继续生成新数据
+      }
+    }
+
+    // --- 记录不存在或 noise_json 为空，需要生成噪音数据 ---
+    const seed = userId * 10000 + parseInt(date.replace(/-/g, ''), 10);
+    const rand = seededRandom(seed);
+
+    // 生成 144 个噪音数据点（每 10 分钟一个，覆盖 24 小时）
+    // 夜间 (22:00-06:00) 30-40dB，白天 (06:00-22:00) 45-65dB
+    // 平滑过渡：6-7点夜间→白天过渡，21-22点白天→夜间过渡
+    const noise = [];
+    const labels = generateNoiseTimeLabels();
+    for (let i = 0; i < 144; i++) {
+      const hourDecimal = i / 6; // 如 6.5 表示 06:30
+
+      let base, range;
+      if (hourDecimal >= 22 || hourDecimal < 6) {
+        // --- 核心夜间 (22:00-05:50) ---
+        base = 30;
+        range = 10;
+      } else if (hourDecimal >= 6 && hourDecimal < 7) {
+        // --- 早晨过渡 (06:00-06:50)：夜间→白天平滑过渡 ---
+        const t = (hourDecimal - 6) / 1; // 0→1 线性插值系数
+        base = 30 + t * 15;  // 30→45
+        range = 10 + t * 10; // 10→20
+      } else if (hourDecimal >= 7 && hourDecimal < 8) {
+        // --- 早晨过渡后半段 (07:00-07:50)：继续向白天过渡 ---
+        base = 45;
+        range = 20;
+      } else if (hourDecimal >= 8 && hourDecimal < 21) {
+        // --- 核心白天 (08:00-20:50) ---
+        base = 45;
+        range = 20;
+      } else if (hourDecimal >= 21 && hourDecimal < 22) {
+        // --- 傍晚过渡 (21:00-21:50)：白天→夜间平滑过渡 ---
+        const t = (hourDecimal - 21) / 1; // 0→1 线性插值系数
+        base = 45 - t * 15;  // 45→30
+        range = 20 - t * 10; // 20→10
+      } else {
+        base = 45;
+        range = 20;
+      }
+
+      noise.push(Math.round((base + rand() * range) * 10) / 10);
+    }
+
+    const noiseJson = JSON.stringify(noise);
+    const emptyJsonArray = '[]';
+
+    // --- 如果报告记录不存在，先 INSERT 基础指标 ---
+    if (!existing) {
+      const metrics = generateBaseMetrics(rand);
+      try {
+        db.run(
+          `INSERT INTO sleep_reports
+           (user_id, device_id, report_date, sleep_score, total_minutes,
+            deep_minutes, light_minutes, rem_minutes, wake_minutes,
+            avg_heart_rate, events_json, heart_rate_curve, respiration_curve,
+            stage_curve, noise_curve, noise_json, sleep_stages_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId, deviceId, date, metrics.sleepScore, metrics.totalMinutes,
+            metrics.deepMinutes, metrics.lightMinutes, metrics.remMinutes,
+            metrics.wakeMinutes, metrics.avgHeartRate,
+            emptyJsonArray, emptyJsonArray, emptyJsonArray,
+            emptyJsonArray, emptyJsonArray, noiseJson, emptyJsonArray
+          ]
+        );
+        await saveDb0(db);
+      } catch (insertErr) {
+        // 并发冲突 → UPDATE
+        if (insertErr.message && insertErr.message.includes('UNIQUE')) {
+          db.run(
+            'UPDATE sleep_reports SET noise_json = ? WHERE user_id = ? AND device_id = ? AND report_date = ?',
+            [noiseJson, userId, deviceId, date]
+          );
+          await saveDb0(db);
+        } else {
+          throw insertErr;
+        }
+      }
+    } else {
+      // 记录已存在但 noise_json 为空，执行 UPDATE
+      db.run(
+        'UPDATE sleep_reports SET noise_json = ? WHERE report_id = ?',
+        [noiseJson, existing.report_id]
+      );
+      await saveDb0(db);
+    }
+
+    // --- 返回噪音数据 ---
+    res.json({
+      code: 0,
+      message: 'success',
+      data: { date, noise, labels }
+    });
+
+  } catch (err) {
+    console.error('[sleep/noise] 异常:', err.message);
     res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
   }
 });
