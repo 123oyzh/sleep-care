@@ -93,5 +93,12 @@ Page({
    */
   goToReport() {
     wx.navigateTo({ url: '/pages/report/report' });
+  },
+
+  /**
+   * 跳转到作息设置页
+   */
+  goToSettings() {
+    wx.navigateTo({ url: '/pages/settings/settings' });
   }
 });
