@@ -54,7 +54,7 @@
 
     <!-- 趋势图表 -->
     <view class="trend-chart-wrapper" wx:else>
-      <ec-canvas canvas-id="summary-chart" ec="{{summaryEc}}"></ec-canvas>
+      <ec-canvas canvas-id="mychart-summary" ec="{{summaryEc}}"></ec-canvas>
     </view>
 
     <!-- 平均分参考线提示 -->

@@ -1,0 +1,127 @@
+/* 作息设置页面样式 */
+
+/* 页面根节点 — 背景 #f5f7fa */
+page {
+  height: 100vh;
+  overflow-y: auto;
+  background-color: #f5f7fa;
+}
+
+/* 主容器 — 内边距 20px */
+.settings-container {
+  min-height: 100vh;
+  padding: 40rpx;               /* ≈20px */
+  box-sizing: border-box;
+}
+
+/* 页面标题 */
+.page-title {
+  font-size: 38rpx;
+  font-weight: 700;
+  color: #1a3a6b;
+  display: block;
+  margin-bottom: 30rpx;
+}
+
+/* ========== 卡片样式 ========== */
+
+/* 卡片 — 白色背景、圆角 12px、阴影、内边距 16px、下边距 12px */
+.card {
+  background: #ffffff;
+  border-radius: 24rpx;         /* ≈12px */
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.04);
+  padding: 32rpx;               /* ≈16px */
+  margin-bottom: 24rpx;         /* ≈12px */
+}
+
+/* ========== 加载中 ========== */
+.loading-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400rpx;
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #999999;
+}
+
+/* ========== 设置项 — flex 左右对齐 ========== */
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 标签文字 — 颜色 #333、字号 16px */
+.setting-label {
+  font-size: 32rpx;             /* ≈16px */
+  color: #333333;
+}
+
+/* ========== 时间 picker 显示区 ========== */
+.picker-display {
+  display: flex;
+  align-items: center;
+}
+
+.picker-value {
+  font-size: 30rpx;
+  color: #4A90D9;
+  font-weight: 500;
+}
+
+.picker-arrow {
+  font-size: 36rpx;
+  color: #c0c8d4;
+  margin-left: 8rpx;
+}
+
+/* ========== 滑块 ========== */
+
+/* 滑块数值 */
+.slider-value {
+  font-size: 28rpx;
+  color: #4A90D9;
+  font-weight: 600;
+}
+
+/* 滑块行 */
+.slider-row {
+  display: flex;
+  align-items: center;
+  margin-top: 20rpx;
+}
+
+.slider-min,
+.slider-max {
+  font-size: 24rpx;
+  color: #8da4c1;
+  min-width: 40rpx;
+  text-align: center;
+}
+
+/* 滑块 — 宽度 100%、外边距 8px 0 */
+.slider-row slider {
+  flex: 1;
+  width: 100%;
+  margin: 16rpx 12rpx;          /* ≈8px 0 */
+}
+
+/* ========== 保存按钮 ========== */
+.save-action {
+  margin-top: 40rpx;
+}
+
+/* 保存按钮 — 宽度 100%、圆角 8px、背景 #4A90D9 */
+.save-action button {
+  width: 100%;
+  border-radius: 16rpx;         /* ≈8px */
+  font-size: 32rpx;
+  font-weight: 600;
+  padding: 12rpx 0;
+  background: #4A90D9;
+  color: #ffffff;
+  border: none;
+}
