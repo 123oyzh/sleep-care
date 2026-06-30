@@ -512,6 +512,105 @@ function seededRandom(seed) {
 }
 
 /**
+ * 使用确定性伪随机生成睡眠报告基础指标
+ *
+ * 将 seededRandom 的 rand 函数作为输入，返回包含
+ * 睡眠评分、各阶段时长、觉醒次数、平均心率等基础指标的对象。
+ * 被 /api/sleep/report/daily 和 /api/sleep/stages 接口复用。
+ *
+ * @param {Function} rand - seededRandom 生成的 0-1 随机函数
+ * @returns {Object} { sleepScore, totalMinutes, deepMinutes, lightMinutes,
+ *                     remMinutes, wakeMinutes, awakeCount, avgHeartRate }
+ */
+function generateBaseMetrics(rand) {
+  // 睡眠评分 60-100
+  const sleepScore = Math.floor(60 + rand() * 40);
+
+  // 总睡眠时长 300-480 分钟
+  const totalMinutes = Math.floor(300 + rand() * 180);
+
+  // 觉醒次数 0-5 次
+  const awakeCount = Math.floor(rand() * 6);
+
+  // 每次觉醒 2-5 分钟，计算总觉醒时长
+  let wakeMinutes = 0;
+  for (let i = 0; i < awakeCount; i++) {
+    wakeMinutes += 2 + Math.floor(rand() * 4);
+  }
+
+  // 深睡比例 0.15-0.35
+  const deepRatio = 0.15 + rand() * 0.20;
+  // REM 比例 0.20-0.25
+  const remRatio = 0.20 + rand() * 0.05;
+
+  // 有效睡眠总分钟 = 总时长 - 觉醒时长
+  const effectiveMinutes = totalMinutes - wakeMinutes;
+  const deepMinutes = Math.floor(effectiveMinutes * deepRatio);
+  const remMinutes = Math.floor(effectiveMinutes * remRatio);
+  // 浅睡 = 剩余部分（避免因取整导致总和偏差）
+  const lightMinutes = effectiveMinutes - deepMinutes - remMinutes;
+
+  // 平均心率 55-80
+  const avgHeartRate = 55 + Math.floor(rand() * 25);
+
+  return {
+    sleepScore, totalMinutes, deepMinutes, lightMinutes,
+    remMinutes, wakeMinutes, awakeCount, avgHeartRate
+  };
+}
+
+/**
+ * 生成 48 个睡眠分期数据点（每 10 分钟一个，覆盖 8 小时）
+ *
+ * 编码规则：0=清醒, 1=浅睡, 2=深睡, 3=REM
+ * 符合生理规律：前半夜深睡占比高，后半夜 REM 占比高
+ *
+ * @param {Function} rand - seededRandom 生成的 0-1 随机函数
+ * @returns {number[]} 长度为 48 的整数数组
+ */
+function generateSleepStages(rand) {
+  const pointCount = 48;
+  const stages = [];
+
+  for (let i = 0; i < pointCount; i++) {
+    const r = rand();
+
+    if (i < 24) {
+      // 前半夜（00:00-03:50）：深睡占比高
+      if (r < 0.05)      stages.push(0); // 清醒 5%
+      else if (r < 0.45) stages.push(1); // 浅睡 40%
+      else if (r < 0.85) stages.push(2); // 深睡 40%
+      else               stages.push(3); // REM  15%
+    } else {
+      // 后半夜（04:00-07:50）：REM 占比高，深睡少
+      if (r < 0.10)      stages.push(0); // 清醒 10%
+      else if (r < 0.55) stages.push(1); // 浅睡 45%
+      else if (r < 0.65) stages.push(2); // 深睡 10%
+      else               stages.push(3); // REM  35%
+    }
+  }
+
+  return stages;
+}
+
+/**
+ * 生成 48 个时间标签 ["00:00","00:10",...,"07:50"]
+ *
+ * @returns {string[]} 格式化时间字符串数组
+ */
+function generateTimeLabels() {
+  const labels = [];
+  for (let h = 0; h < 8; h++) {
+    for (let m = 0; m < 60; m += 10) {
+      labels.push(
+        String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0')
+      );
+    }
+  }
+  return labels;
+}
+
+/**
  * GET /api/sleep/report/daily — 获取指定日期的睡眠报告
  *
  * 如果报告不存在，则根据用户设定自动生成模拟数据并持久化。
@@ -564,34 +663,8 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
     const seed = userId * 10000 + parseInt(date.replace(/-/g, ''), 10);
     const rand = seededRandom(seed);
 
-    // 睡眠评分 60-100
-    const sleepScore = Math.floor(60 + rand() * 40);
-
-    // 总睡眠时长 300-480 分钟
-    const totalMinutes = Math.floor(300 + rand() * 180);
-
-    // 觉醒次数 0-5 次
-    const awakeCount = Math.floor(rand() * 6);
-
-    // 每次觉醒 2-5 分钟，计算总觉醒时长
-    let wakeMinutes = 0;
-    for (let i = 0; i < awakeCount; i++) {
-      wakeMinutes += 2 + Math.floor(rand() * 4);
-    }
-
-    // 深睡比例 0.15-0.35
-    const deepRatio = 0.15 + rand() * 0.20;
-    // REM 比例 0.20-0.25
-    const remRatio = 0.20 + rand() * 0.05;
-    // 有效睡眠总分钟 = 总时长 - 觉醒时长
-    const effectiveMinutes = totalMinutes - wakeMinutes;
-    const deepMinutes = Math.floor(effectiveMinutes * deepRatio);
-    const remMinutes = Math.floor(effectiveMinutes * remRatio);
-    // 浅睡 = 剩余部分（避免因取整导致总和偏差）
-    const lightMinutes = effectiveMinutes - deepMinutes - remMinutes;
-
-    // 平均心率 55-80
-    const avgHeartRate = 55 + Math.floor(rand() * 25);
+    // 调用公用函数生成基础指标
+    const metrics = generateBaseMetrics(rand);
 
     // JSON 曲线/事件字段暂存为空数组，为后续图表功能预留
     const emptyJsonArray = '[]';
@@ -603,13 +676,13 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
          (user_id, device_id, report_date, sleep_score, total_minutes,
           deep_minutes, light_minutes, rem_minutes, wake_minutes,
           avg_heart_rate, events_json, heart_rate_curve, respiration_curve,
-          stage_curve, noise_curve)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          stage_curve, noise_curve, sleep_stages_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          userId, deviceId, date, sleepScore, totalMinutes,
-          deepMinutes, lightMinutes, remMinutes, wakeMinutes,
-          avgHeartRate, emptyJsonArray, emptyJsonArray, emptyJsonArray,
-          emptyJsonArray, emptyJsonArray
+          userId, deviceId, date, metrics.sleepScore, metrics.totalMinutes,
+          metrics.deepMinutes, metrics.lightMinutes, metrics.remMinutes, metrics.wakeMinutes,
+          metrics.avgHeartRate, emptyJsonArray, emptyJsonArray, emptyJsonArray,
+          emptyJsonArray, emptyJsonArray, emptyJsonArray
         ]
       );
 
@@ -640,7 +713,7 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
       'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
       [userId, deviceId, date]
     );
-    report.awake_count = awakeCount;
+    report.awake_count = metrics.awakeCount;
 
     res.json({
       code: 0,
@@ -650,6 +723,131 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
 
   } catch (err) {
     console.error('[sleep/report/daily] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/sleep/stages — 获取指定日期的睡眠分期数据
+ *
+ * 返回 48 个分期数据点（每 10 分钟一个，覆盖 8 小时）及对应的时间标签。
+ * 编码：0=清醒, 1=浅睡, 2=深睡, 3=REM
+ *
+ * 如果 sleep_stages_json 已存在且非空，直接解析返回；
+ * 否则使用 seededRandom 生成符合生理规律的分期数据并持久化。
+ *
+ * 查询参数：date (YYYY-MM-DD)，默认昨天
+ * 请求头：Authorization: Bearer <token>
+ */
+app.get('/api/sleep/stages', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const userId = req.user.id; // 从 JWT 解析的用户 ID
+
+    // --- 解析日期参数，默认取昨天 ---
+    let date = req.query.date;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      date = yesterday.toISOString().substring(0, 10);
+    }
+
+    // --- 获取用户的第一台设备，无设备时 deviceId 暂用 0 ---
+    const device = dbGetOne(db,
+      'SELECT id FROM devices WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    const deviceId = device ? device.id : 0;
+
+    // --- 查询 sleep_reports 表中该用户+设备+日期的记录 ---
+    const existing = dbGetOne(db,
+      'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
+      [userId, deviceId, date]
+    );
+
+    // 如果记录存在且 sleep_stages_json 不为空，直接解析返回
+    if (existing && existing.sleep_stages_json) {
+      try {
+        const stages = JSON.parse(existing.sleep_stages_json);
+        if (Array.isArray(stages) && stages.length > 0) {
+          const labels = generateTimeLabels();
+          return res.json({
+            code: 0,
+            message: 'success',
+            data: { date, stages, labels, count: stages.length }
+          });
+        }
+      } catch (_) {
+        // JSON 解析失败，继续生成新数据
+      }
+    }
+
+    // --- 记录不存在或 sleep_stages_json 为空，需先生成基础指标 ---
+    // 种子 = userId × 10000 + 日期数字（保证用户+日期唯一确定性）
+    const seed = userId * 10000 + parseInt(date.replace(/-/g, ''), 10);
+    const rand = seededRandom(seed);
+
+    // 生成基础指标（与 /api/sleep/report/daily 共用 generateBaseMetrics）
+    const metrics = generateBaseMetrics(rand);
+
+    // 生成睡眠分期数据（48 个数据点）
+    const stages = generateSleepStages(rand);
+
+    // 生成时间标签数组
+    const labels = generateTimeLabels();
+
+    // JSON 序列化
+    const stagesJson = JSON.stringify(stages);
+    const emptyJsonArray = '[]';
+
+    // --- 如果报告记录不存在，先 INSERT 基础指标 ---
+    if (!existing) {
+      try {
+        db.run(
+          `INSERT INTO sleep_reports
+           (user_id, device_id, report_date, sleep_score, total_minutes,
+            deep_minutes, light_minutes, rem_minutes, wake_minutes,
+            avg_heart_rate, events_json, heart_rate_curve, respiration_curve,
+            stage_curve, noise_curve, sleep_stages_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId, deviceId, date, metrics.sleepScore, metrics.totalMinutes,
+            metrics.deepMinutes, metrics.lightMinutes, metrics.remMinutes, metrics.wakeMinutes,
+            metrics.avgHeartRate, emptyJsonArray, emptyJsonArray, emptyJsonArray,
+            emptyJsonArray, emptyJsonArray, stagesJson
+          ]
+        );
+        await saveDb0(db);
+      } catch (insertErr) {
+        // --- 处理 UNIQUE 约束异常（并发场景）：已有记录则执行 UPDATE ---
+        if (insertErr.message && insertErr.message.includes('UNIQUE')) {
+          db.run(
+            'UPDATE sleep_reports SET sleep_stages_json = ? WHERE user_id = ? AND device_id = ? AND report_date = ?',
+            [stagesJson, userId, deviceId, date]
+          );
+          await saveDb0(db);
+        } else {
+          throw insertErr;
+        }
+      }
+    } else {
+      // --- 记录已存在但 sleep_stages_json 为空，执行 UPDATE ---
+      db.run(
+        'UPDATE sleep_reports SET sleep_stages_json = ? WHERE report_id = ?',
+        [stagesJson, existing.report_id]
+      );
+      await saveDb0(db);
+    }
+
+    // --- 返回分期数据 ---
+    res.json({
+      code: 0,
+      message: 'success',
+      data: { date, stages, labels, count: stages.length }
+    });
+
+  } catch (err) {
+    console.error('[sleep/stages] 异常:', err.message);
     res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
   }
 });

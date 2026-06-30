@@ -69,27 +69,31 @@ async function initSchema0() {
   // ============================================================
   db.run(`
     CREATE TABLE IF NOT EXISTS sleep_reports (
-      report_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id          INTEGER NOT NULL,
-      device_id        INTEGER NOT NULL,
-      report_date      TEXT    NOT NULL,
-      sleep_score      INTEGER NOT NULL DEFAULT 0,
-      total_minutes    INTEGER NOT NULL DEFAULT 0,
-      deep_minutes     INTEGER NOT NULL DEFAULT 0,
-      rem_minutes      INTEGER NOT NULL DEFAULT 0,
-      light_minutes    INTEGER NOT NULL DEFAULT 0,
-      wake_minutes     INTEGER NOT NULL DEFAULT 0,
-      avg_heart_rate   REAL,
-      events_json      TEXT,
-      heart_rate_curve TEXT,
+      report_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id           INTEGER NOT NULL,
+      device_id         INTEGER NOT NULL,
+      report_date       TEXT    NOT NULL,
+      sleep_score       INTEGER NOT NULL DEFAULT 0,
+      total_minutes     INTEGER NOT NULL DEFAULT 0,
+      deep_minutes      INTEGER NOT NULL DEFAULT 0,
+      rem_minutes       INTEGER NOT NULL DEFAULT 0,
+      light_minutes     INTEGER NOT NULL DEFAULT 0,
+      wake_minutes      INTEGER NOT NULL DEFAULT 0,
+      avg_heart_rate    REAL,
+      events_json       TEXT,
+      heart_rate_curve  TEXT,
       respiration_curve TEXT,
-      stage_curve      TEXT,
-      noise_curve      TEXT,
-      created_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+      stage_curve       TEXT,
+      noise_curve       TEXT,
+      sleep_stages_json TEXT,     -- 存储48条睡眠分期JSON数组(每10分钟一个数据点，编码0=清醒/1=浅睡/2=深睡/3=REM)
+      created_at        TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (user_id)   REFERENCES users(user_id)   ON DELETE CASCADE,
       FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
     );
   `);
+
+  // 兼容已有数据库：尝试添加 sleep_stages_json 列（若已存在则忽略错误）
+  try { db.run("ALTER TABLE sleep_reports ADD COLUMN sleep_stages_json TEXT;"); } catch (_) {}
 
   // 高频查询索引：按用户+日期查询每日报告
   db.run(`
