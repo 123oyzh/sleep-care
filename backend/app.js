@@ -39,6 +39,15 @@ app.use(cors());
 // JSON 请求体解析
 app.use(express.json());
 
+// 配置静态文件服务（医生端 Web 页面），禁用缓存方便开发调试
+app.use(express.static('public', {
+  setHeaders: function (res) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+}));
+
 // ============================================================
 // 数据库查询辅助函数
 // 使用 sql.js 的 prepare + bind + step + getAsObject 方式
@@ -1431,6 +1440,283 @@ app.get('/api/doctor/granted', authenticateToken, async (req, res) => {
 
   } catch (err) {
     console.error('[doctor/granted] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * PUT /api/doctor/confirm — 医生确认患者的授权请求
+ *
+ * 仅限医生角色调用。将 pending 状态的授权改为 active，
+ * 记录确认时间到 responded_at。
+ *
+ * 请求体：{ patient_id: number }
+ * 请求头：Authorization: Bearer <token>
+ */
+app.put('/api/doctor/confirm', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const doctorId = req.user.id;
+    const { patient_id } = req.body;
+
+    // --- 权限校验：仅医生可操作 ---
+    if (req.user.role !== 1) {
+      return res.json({ code: 1002, message: '仅医生可执行此操作', data: null });
+    }
+
+    if (!patient_id) {
+      return res.json({ code: 1001, message: '请指定患者', data: null });
+    }
+
+    // --- 查询待确认的授权记录 ---
+    const record = dbGetOne(db,
+      `SELECT * FROM doctor_authorizations
+       WHERE doctor_id = ? AND patient_id = ? AND status = 'pending'`,
+      [doctorId, patient_id]
+    );
+
+    if (!record) {
+      return res.json({ code: 1001, message: '未找到待确认的授权请求', data: null });
+    }
+
+    // --- 检查是否过期 ---
+    const today = new Date().toISOString().substring(0, 10);
+    if (record.expire_date < today) {
+      // 自动标记为 expired
+      db.run(
+        'UPDATE doctor_authorizations SET status = \'expired\', updated_at = ? WHERE id = ?',
+        [new Date().toISOString().replace('T', ' ').substring(0, 19), record.id]
+      );
+      await saveDb0(db);
+      return res.json({ code: 1001, message: '授权请求已过期', data: null });
+    }
+
+    // --- UPDATE status = 'active'，记录响应时间 ---
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    db.run(
+      'UPDATE doctor_authorizations SET status = \'active\', responded_at = ?, updated_at = ? WHERE id = ?',
+      [now, now, record.id]
+    );
+    await saveDb0(db);
+
+    // --- 返回更新后的记录 ---
+    const updated = dbGetOne(db,
+      'SELECT * FROM doctor_authorizations WHERE id = ?',
+      [record.id]
+    );
+
+    res.json({
+      code: 0,
+      message: '已确认授权',
+      data: updated
+    });
+
+  } catch (err) {
+    console.error('[doctor/confirm] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/doctor/patients — 获取当前医生已授权的患者列表
+ *
+ * 仅限医生角色调用。JOIN users 获取患者信息，
+ * 子查询获取每位患者的最新睡眠评分。
+ *
+ * 请求头：Authorization: Bearer <token>
+ */
+app.get('/api/doctor/patients', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const doctorId = req.user.id;
+
+    // --- 权限校验：仅医生可操作 ---
+    if (req.user.role !== 1) {
+      return res.json({ code: 1002, message: '仅医生可查看', data: null });
+    }
+
+    // --- JOIN 查询患者在 Pending/Active 状态的授权记录 ---
+    const patients = dbGetAll(db,
+      `SELECT a.id AS auth_id, a.patient_id, a.status, a.expire_date, a.requested_at,
+              u.nickname, u.phone
+       FROM doctor_authorizations a
+       JOIN users u ON a.patient_id = u.user_id
+       WHERE a.doctor_id = ?
+         AND a.status IN ('pending','active')
+       ORDER BY a.requested_at DESC`,
+      [doctorId]
+    );
+
+    // 过滤过期记录 + 查询每位患者的最新睡眠评分
+    const today = new Date().toISOString().substring(0, 10);
+    const result = [];
+    for (var i = 0; i < patients.length; i++) {
+      var p = patients[i];
+
+      // 跳过已过期的授权
+      if (p.expire_date < today) continue;
+
+      // 子查询：获取该患者最新的睡眠报告评分
+      var scoreRow = dbGetOne(db,
+        'SELECT sleep_score FROM sleep_reports WHERE user_id = ? ORDER BY report_date DESC LIMIT 1',
+        [p.patient_id]
+      );
+      var latestScore = scoreRow ? scoreRow.sleep_score : null;
+
+      result.push({
+        patient_id: p.patient_id,
+        nickname: p.nickname,
+        phone: p.phone,
+        status: p.status,
+        expire_date: p.expire_date,
+        latest_score: latestScore
+      });
+    }
+
+    res.json({ code: 0, message: 'success', data: result });
+
+  } catch (err) {
+    console.error('[doctor/patients] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/doctor/patient/data — 获取指定患者的睡眠报告
+ *
+ * 仅限医生角色调用，且授权状态必须为 active。
+ *
+ * 查询参数：patient_id (必填), date (YYYY-MM-DD, 默认昨天)
+ * 请求头：Authorization: Bearer <token>
+ */
+app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const doctorId = req.user.id;
+
+    // --- 权限校验：仅医生可操作 ---
+    if (req.user.role !== 1) {
+      return res.json({ code: 1002, message: '仅医生可查看', data: null });
+    }
+
+    // --- 参数校验 ---
+    const patientId = parseInt(req.query.patient_id, 10);
+    if (!patientId) {
+      return res.json({ code: 1001, message: '请指定患者', data: null });
+    }
+
+    let date = req.query.date;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      date = yesterday.toISOString().substring(0, 10);
+    }
+
+    // --- 权限校验：验证授权状态必须为 active ---
+    const auth = dbGetOne(db,
+      `SELECT * FROM doctor_authorizations
+       WHERE doctor_id = ? AND patient_id = ? AND status = 'active'`,
+      [doctorId, patientId]
+    );
+
+    if (!auth) {
+      return res.json({ code: 1002, message: '无权查看该患者数据', data: null });
+    }
+
+    // --- 检查是否过期 ---
+    const today = new Date().toISOString().substring(0, 10);
+    if (auth.expire_date < today) {
+      return res.json({ code: 1002, message: '授权已过期，无权查看', data: null });
+    }
+
+    // --- 查询睡眠报告 ---
+    const report = dbGetOne(db,
+      `SELECT report_id, user_id, report_date, sleep_score, total_minutes,
+              deep_minutes, light_minutes, rem_minutes, wake_minutes,
+              avg_heart_rate, events_json, sleep_stages_json
+       FROM sleep_reports
+       WHERE user_id = ? AND report_date = ?`,
+      [patientId, date]
+    );
+
+    if (!report) {
+      const device = dbGetOne(db,
+        'SELECT id FROM devices WHERE user_id = ? LIMIT 1',
+        [patientId]
+      );
+      const deviceId = device ? device.id : 0;
+
+      // 生成模拟报告数据
+      const seed = patientId * 10000 + parseInt(date.replace(/-/g, ''), 10);
+      const rand = seededRandom(seed);
+      const metrics = generateBaseMetrics(rand);
+      const stages = generateSleepStages(rand);
+      const stagesJson = JSON.stringify(stages);
+      const emptyJson = '[]';
+
+      try {
+        db.run(
+          `INSERT INTO sleep_reports
+           (user_id, device_id, report_date, sleep_score, total_minutes,
+            deep_minutes, light_minutes, rem_minutes, wake_minutes,
+            avg_heart_rate, events_json, heart_rate_curve, respiration_curve,
+            stage_curve, noise_curve, noise_json, sleep_stages_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [patientId, deviceId, date, metrics.sleepScore, metrics.totalMinutes,
+           metrics.deepMinutes, metrics.lightMinutes, metrics.remMinutes,
+           metrics.wakeMinutes, metrics.avgHeartRate,
+           emptyJson, emptyJson, emptyJson, emptyJson, emptyJson, emptyJson, stagesJson]
+        );
+        await saveDb0(db);
+      } catch (insertErr) {
+        if (insertErr.message && insertErr.message.includes('UNIQUE')) {
+          // 并发已插入，重新查询
+          const retry = dbGetOne(db,
+            'SELECT * FROM sleep_reports WHERE user_id = ? AND report_date = ?',
+            [patientId, date]
+          );
+          if (retry) {
+            retry.deep_ratio = retry.total_minutes > 0
+              ? Math.round((retry.deep_minutes / retry.total_minutes) * 100)
+              : 0;
+            retry.awake_count = retry.wake_minutes > 0
+              ? Math.max(1, Math.round(retry.wake_minutes / 3))
+              : 0;
+            return res.json({ code: 0, message: 'success', data: retry });
+          }
+        }
+        throw insertErr;
+      }
+
+      const newReport = dbGetOne(db,
+        'SELECT * FROM sleep_reports WHERE user_id = ? AND report_date = ?',
+        [patientId, date]
+      );
+      if (newReport) {
+        newReport.deep_ratio = newReport.total_minutes > 0
+          ? Math.round((newReport.deep_minutes / newReport.total_minutes) * 100)
+          : 0;
+        newReport.awake_count = newReport.wake_minutes > 0
+          ? Math.max(1, Math.round(newReport.wake_minutes / 3))
+          : 0;
+        return res.json({ code: 0, message: 'success', data: newReport });
+      }
+
+      return res.json({ code: 1001, message: '暂无数据', data: null });
+    }
+
+    // --- 返回已有报告 ---
+    report.deep_ratio = report.total_minutes > 0
+      ? Math.round((report.deep_minutes / report.total_minutes) * 100)
+      : 0;
+    report.awake_count = report.wake_minutes > 0
+      ? Math.max(1, Math.round(report.wake_minutes / 3))
+      : 0;
+
+    res.json({ code: 0, message: 'success', data: report });
+
+  } catch (err) {
+    console.error('[doctor/patient/data] 异常:', err.message);
     res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
   }
 });
