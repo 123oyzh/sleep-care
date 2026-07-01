@@ -5,7 +5,8 @@
     "pages/home/home",
     "pages/devices/devices",
     "pages/report/report",
-    "pages/settings/settings"
+    "pages/settings/settings",
+    "pages/doctors/doctors"
   ],
   "window": {
     "navigationBarTitleText": "智能睡眠管理",

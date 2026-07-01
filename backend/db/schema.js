@@ -128,27 +128,52 @@ async function initSchema0() {
   // ============================================================
   // 5. 医生授权表 (doctor_authorizations) — 来源：需求文档 §5.7
   // ============================================================
+
+  // --- 检测旧表是否存在，缺少新字段则重建 ---
+  let needRebuildAuth = false;
+  try {
+    const authCols = [];
+    const astmt = db.prepare("PRAGMA table_info('doctor_authorizations');");
+    while (astmt.step()) authCols.push(astmt.getAsObject().name);
+    astmt.free();
+    if (authCols.length > 0 && (!authCols.includes('created_at') || !authCols.includes('updated_at'))) {
+      needRebuildAuth = true;
+      console.log('[schema] 检测到 doctor_authorizations 表为旧版本（缺少 created_at/updated_at），执行重建...');
+      db.run('DROP TABLE IF EXISTS doctor_authorizations;');
+    }
+  } catch (_) {
+    // 表不存在，直接新创建
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS doctor_authorizations (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      patient_user_id INTEGER NOT NULL,
-      doctor_user_id  INTEGER NOT NULL,
-      status          TEXT    NOT NULL DEFAULT 'active',
-      expire_at       TEXT    NOT NULL,
-      created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (patient_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-      FOREIGN KEY (doctor_user_id)  REFERENCES users(user_id) ON DELETE CASCADE
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id    INTEGER NOT NULL,
+      doctor_id     INTEGER NOT NULL,
+      status        TEXT    NOT NULL DEFAULT 'pending',
+      expire_date   TEXT    NOT NULL,
+      doctor_note   TEXT,
+      requested_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+      responded_at  TEXT,
+      created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (patient_id) REFERENCES users(user_id) ON DELETE CASCADE,
+      FOREIGN KEY (doctor_id)  REFERENCES users(user_id) ON DELETE CASCADE
     );
   `);
+
+  if (needRebuildAuth) {
+    console.log('[schema] doctor_authorizations 表已重建，字段已更新');
+  }
 
   // 授权查询索引
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_auth_patient
-      ON doctor_authorizations(patient_user_id);
+      ON doctor_authorizations(patient_id);
   `);
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_auth_doctor
-      ON doctor_authorizations(doctor_user_id);
+      ON doctor_authorizations(doctor_id);
   `);
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_auth_status

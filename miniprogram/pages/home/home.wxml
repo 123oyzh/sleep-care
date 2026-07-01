@@ -69,6 +69,10 @@
     <view class="settings-entry">
       <button bindtap="goToSettings">作息设置</button>
     </view>
+    <!-- 医生授权入口 -->
+    <view class="settings-entry">
+      <button bindtap="goToDoctors">医生授权</button>
+    </view>
 
   </view>
 

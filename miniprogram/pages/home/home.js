@@ -100,5 +100,12 @@ Page({
    */
   goToSettings() {
     wx.navigateTo({ url: '/pages/settings/settings' });
+  },
+
+  /**
+   * 跳转到医生授权页
+   */
+  goToDoctors() {
+    wx.navigateTo({ url: '/pages/doctors/doctors' });
   }
 });

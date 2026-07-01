@@ -1,0 +1,169 @@
+/* 医生授权页面样式 */
+
+/* 页面根节点 — 背景 #f5f7fa */
+page {
+  height: 100vh;
+  overflow-y: auto;
+  background-color: #f5f7fa;
+}
+
+/* 主容器 — 内边距 16px */
+.doctors-container {
+  min-height: 100vh;
+  padding: 32rpx;               /* ≈16px */
+  box-sizing: border-box;
+}
+
+/* 页面标题 */
+.page-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1a3a6b;
+  display: block;
+  margin-bottom: 24rpx;
+}
+
+/* ========== 加载中 / 空数据 ========== */
+.loading-box,
+.empty-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400rpx;
+}
+
+.loading-text,
+.empty-text {
+  font-size: 28rpx;
+  color: #999999;
+}
+
+/* ========== 通用卡片 ========== */
+.card {
+  background: #ffffff;
+  border-radius: 24rpx;         /* ≈12px */
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.04);
+  padding: 32rpx;               /* ≈16px */
+  margin-bottom: 24rpx;         /* ≈12px */
+}
+
+/* ========== 医生卡片 — flex 左右分布 ========== */
+.doctor-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 医生信息区 */
+.doctor-info {
+  flex: 1;
+}
+
+/* 姓名行 — 姓名 + 状态标签 */
+.doctor-name-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+/* 医生姓名 — 加粗 16px */
+.doctor-name {
+  font-size: 32rpx;             /* ≈16px */
+  font-weight: 700;
+  color: #1a3a6b;
+  margin-right: 16rpx;
+}
+
+/* 手机号 — 灰色 14px */
+.doctor-phone {
+  font-size: 28rpx;             /* ≈14px */
+  color: #8da4c1;
+  display: block;
+  margin-bottom: 6rpx;
+}
+
+/* 过期时间 */
+.doctor-expire {
+  font-size: 24rpx;
+  color: #b0bec5;
+  display: block;
+}
+
+/* ========== 状态标签 ========== */
+.status-tag {
+  font-size: 22rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 16rpx;
+}
+
+/* pending — 黄色 */
+.status-pending {
+  background: #fff8e1;
+  color: #f9a825;
+}
+
+/* active — 绿色 */
+.status-active {
+  background: #e8f5e9;
+  color: #43a047;
+}
+
+/* ========== 撤销按钮 — 红色文字 ========== */
+.doctor-action {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+.btn-revoke {
+  font-size: 26rpx;
+  color: #e53935;
+  background: transparent;
+  border: 2rpx solid #ef9a9a;
+  border-radius: 20rpx;
+  padding: 8rpx 24rpx;
+  line-height: 1.4;
+}
+
+.btn-revoke::after {
+  border: none;
+}
+
+/* ========== 底部添加区域 — flex 布局 ========== */
+.add-section {
+  margin-top: 40rpx;
+}
+
+.add-input-row {
+  display: flex;
+  align-items: center;
+}
+
+/* 输入框 — flex: 1 撑满 */
+.phone-input {
+  flex: 1;
+  height: 80rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+  color: #1a3a6b;
+  border: 2rpx solid #eef1f6;
+}
+
+/* 添加按钮 — 固定宽度 */
+.btn-add {
+  width: 140rpx;
+  height: 80rpx;
+  margin-left: 16rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #4A90D9 0%, #357ABD 100%);
+  border-radius: 24rpx;
+  border: none;
+  line-height: 80rpx;
+}
+
+.btn-add::after {
+  border: none;
+}

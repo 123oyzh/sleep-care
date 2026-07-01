@@ -1166,6 +1166,276 @@ app.get('/api/sleep/summary', authenticateToken, async (req, res) => {
 });
 
 // ============================================================
+// 作息设置接口（受 authenticateToken 中间件保护）
+// ============================================================
+
+/**
+ * GET /api/setting/plan — 获取当前用户的作息设置
+ *
+ * 从 user_settings 表查询 bedtime, wakeup_time, sunrise_duration。
+ * 若无记录则插入默认值并返回。
+ */
+app.get('/api/setting/plan', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const userId = req.user.id;
+
+    // 查询已有设置
+    const existing = dbGetOne(db,
+      'SELECT bedtime, wakeup_time, sunrise_duration FROM user_settings WHERE user_id = ?',
+      [userId]
+    );
+
+    if (existing) {
+      // 已有设置，映射到小程序字段名
+      return res.json({
+        code: 0,
+        message: 'success',
+        data: {
+          bedTime: existing.bedtime || '23:00',
+          wakeTime: existing.wakeup_time || '07:00',
+          sunriseDuration: existing.sunrise_duration || 10
+        }
+      });
+    }
+
+    // 无记录则插入默认值
+    db.run(
+      'INSERT INTO user_settings (user_id, bedtime, wakeup_time, sunrise_duration) VALUES (?, ?, ?, ?)',
+      [userId, '23:00', '07:00', 10]
+    );
+    await saveDb0(db);
+
+    res.json({
+      code: 0,
+      message: 'success',
+      data: { bedTime: '23:00', wakeTime: '07:00', sunriseDuration: 10 }
+    });
+
+  } catch (err) {
+    console.error('[setting/plan GET] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * PUT /api/setting/plan — 更新当前用户的作息设置
+ *
+ * 请求体：{ bedTime, wakeTime, sunriseDuration }
+ * 更新 user_settings 表对应列。
+ */
+app.put('/api/setting/plan', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const userId = req.user.id;
+    const { bedTime, wakeTime, sunriseDuration } = req.body;
+
+    // 参数校验
+    if (!bedTime || !wakeTime) {
+      return res.json({ code: 1001, message: '就寝时间和起床时间不能为空', data: null });
+    }
+    if (!/^\d{2}:\d{2}$/.test(bedTime) || !/^\d{2}:\d{2}$/.test(wakeTime)) {
+      return res.json({ code: 1001, message: '时间格式错误，应为 HH:mm', data: null });
+    }
+    const duration = parseInt(sunriseDuration, 10);
+    if (isNaN(duration) || duration < 5 || duration > 30) {
+      return res.json({ code: 1001, message: '日出模拟时长需在 5-30 之间', data: null });
+    }
+
+    // 使用 UPSERT 语义：先尝试 UPDATE，若无匹配行则 INSERT
+    const existing = dbGetOne(db,
+      'SELECT user_id FROM user_settings WHERE user_id = ?',
+      [userId]
+    );
+
+    if (existing) {
+      db.run(
+        'UPDATE user_settings SET bedtime = ?, wakeup_time = ?, sunrise_duration = ? WHERE user_id = ?',
+        [bedTime, wakeTime, duration, userId]
+      );
+    } else {
+      db.run(
+        'INSERT INTO user_settings (user_id, bedtime, wakeup_time, sunrise_duration) VALUES (?, ?, ?, ?)',
+        [userId, bedTime, wakeTime, duration]
+      );
+    }
+    await saveDb0(db);
+
+    res.json({
+      code: 0,
+      message: '保存成功',
+      data: { bedTime, wakeTime, sunriseDuration: duration }
+    });
+
+  } catch (err) {
+    console.error('[setting/plan PUT] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+// ============================================================
+// 医生授权接口（受 authenticateToken 中间件保护）
+// ============================================================
+
+/**
+ * POST /api/doctor/grant — 患者授权医生
+ *
+ * 根据 doctor_phone 查询医生，创建 pending 状态的授权记录。
+ * 过期时间 = 当前日期 + 30 天。
+ *
+ * 请求体：{ doctor_phone: string }
+ * 请求头：Authorization: Bearer <token>
+ */
+app.post('/api/doctor/grant', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const patientId = req.user.id;
+    const { doctor_phone } = req.body;
+
+    // --- 参数校验 ---
+    if (!doctor_phone) {
+      return res.json({ code: 1001, message: '请输入医生手机号', data: null });
+    }
+
+    // --- 按 phone + role 查找医生（role: 0=普通, 1=医生, 2=管理员）---
+    const doctor = dbGetOne(db,
+      'SELECT user_id, nickname, phone FROM users WHERE phone = ? AND role = 1',
+      [doctor_phone]
+    );
+
+    if (!doctor) {
+      return res.json({ code: 1001, message: '该手机号不是医生', data: null });
+    }
+
+    // --- 检查是否已有 pending 或 active 授权 ---
+    const existing = dbGetOne(db,
+      'SELECT id, status FROM doctor_authorizations WHERE patient_id = ? AND doctor_id = ? AND status IN (\'pending\',\'active\')',
+      [patientId, doctor.user_id]
+    );
+
+    if (existing) {
+      return res.json({
+        code: 1001,
+        message: existing.status === 'pending' ? '已申请授权，等待医生通过' : '已授权该医生',
+        data: null
+      });
+    }
+
+    // --- 计算过期时间：今天 + 30 天 ---
+    const expireDate = new Date();
+    expireDate.setDate(expireDate.getDate() + 30);
+    const expireDateStr = expireDate.toISOString().substring(0, 10);
+
+    // --- INSERT 授权记录 ---
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    db.run(
+      `INSERT INTO doctor_authorizations
+       (patient_id, doctor_id, status, expire_date, requested_at, created_at, updated_at)
+       VALUES (?, ?, 'pending', ?, ?, ?, ?)`,
+      [patientId, doctor.user_id, expireDateStr, now, now, now]
+    );
+    await saveDb0(db);
+
+    // --- 返回授权记录 ---
+    const record = dbGetOne(db,
+      'SELECT id, patient_id, doctor_id, status, expire_date, requested_at, created_at FROM doctor_authorizations WHERE patient_id = ? AND doctor_id = ? ORDER BY id DESC LIMIT 1',
+      [patientId, doctor.user_id]
+    );
+    record.doctor_name = doctor.nickname;
+    record.doctor_phone = doctor.phone;
+
+    res.json({ code: 0, message: '授权申请已发送', data: record });
+
+  } catch (err) {
+    console.error('[doctor/grant] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * DELETE /api/doctor/revoke — 患者撤销授权
+ *
+ * 将 pending 或 active 状态的授权记录改为 revoked。
+ *
+ * 请求体：{ doctor_id: number }
+ * 请求头：Authorization: Bearer <token>
+ */
+app.delete('/api/doctor/revoke', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const patientId = req.user.id;
+    const { doctor_id } = req.body;
+
+    if (!doctor_id) {
+      return res.json({ code: 1001, message: '请指定医生', data: null });
+    }
+
+    // --- 查询待撤销的授权 ---
+    const record = dbGetOne(db,
+      'SELECT * FROM doctor_authorizations WHERE patient_id = ? AND doctor_id = ? AND status IN (\'pending\',\'active\')',
+      [patientId, doctor_id]
+    );
+
+    if (!record) {
+      return res.json({ code: 1001, message: '未找到该授权', data: null });
+    }
+
+    // --- UPDATE status = 'revoked' ---
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    db.run(
+      "UPDATE doctor_authorizations SET status = 'revoked', updated_at = ? WHERE id = ?",
+      [now, record.id]
+    );
+    await saveDb0(db);
+
+    res.json({ code: 0, message: '已撤销授权', data: null });
+
+  } catch (err) {
+    console.error('[doctor/revoke] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/doctor/granted — 获取已授权的医生列表
+ *
+ * JOIN users 表获取医生姓名和手机号。
+ * 仅返回 pending 或 active 且未过期的授权。
+ *
+ * 请求头：Authorization: Bearer <token>
+ */
+app.get('/api/doctor/granted', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const patientId = req.user.id;
+
+    // JOIN 查询（不做 SQL 日期过滤，避免 sql.js date('now') 兼容问题）
+    const doctors = dbGetAll(db,
+      `SELECT a.id, a.doctor_id, a.status, a.expire_date, a.requested_at,
+              u.nickname AS doctor_name, u.phone AS doctor_phone
+       FROM doctor_authorizations a
+       JOIN users u ON a.doctor_id = u.user_id
+       WHERE a.patient_id = ?
+         AND a.status IN ('pending','active')
+       ORDER BY a.requested_at DESC`,
+      [patientId]
+    );
+
+    // 在 JS 中过滤过期记录
+    const today = new Date().toISOString().substring(0, 10);
+    const valid = doctors.filter(function (d) {
+      return d.expire_date >= today;
+    });
+
+    res.json({ code: 0, message: 'success', data: valid });
+
+  } catch (err) {
+    console.error('[doctor/granted] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+// ============================================================
 // 异步启动
 // ============================================================
 async function start() {
