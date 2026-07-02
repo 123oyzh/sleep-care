@@ -51,12 +51,33 @@ async function _initMysql() {
   const mysql = require('mysql2/promise');
 
   // 兼容两套环境变量名：DB_* (部署文档标准) 优先，MYSQL_* 兼容
+  const host = process.env.DB_HOST || process.env.MYSQL_HOST || '127.0.0.1';
+  const port = parseInt(process.env.DB_PORT || process.env.MYSQL_PORT, 10) || 3306;
+  const user = process.env.DB_USER || process.env.MYSQL_USER || 'root';
+  const password = process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD || '';
+  const database = process.env.DB_NAME || process.env.MYSQL_DATABASE || 'sleep_care';
+
+  // 自动创建数据库（如果它不存在）：先连接 mysql（不指定 database），执行 CREATE DATABASE
+  let bootstrapConn = null;
+  try {
+    bootstrapConn = await mysql.createConnection({ host, port, user, password });
+    await bootstrapConn.execute(
+      `CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    );
+    console.log(`[db] 数据库 ${database} 已就绪`);
+  } catch (err) {
+    console.error('[db] 自动创建数据库失败:', err.message);
+  } finally {
+    if (bootstrapConn) await bootstrapConn.end();
+  }
+
+  // 创建正式连接池（指定 database）
   const pool = mysql.createPool({
-    host: process.env.DB_HOST || process.env.MYSQL_HOST || '127.0.0.1',
-    port: parseInt(process.env.DB_PORT || process.env.MYSQL_PORT, 10) || 3306,
-    user: process.env.DB_USER || process.env.MYSQL_USER || 'root',
-    password: process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD || '',
-    database: process.env.DB_NAME || process.env.MYSQL_DATABASE || 'sleep_care',
+    host,
+    port,
+    user,
+    password,
+    database,
     waitForConnections: true,
     connectionLimit: 10,
     charset: 'utf8mb4'
