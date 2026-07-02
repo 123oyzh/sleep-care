@@ -1,0 +1,10 @@
+**/node_modules
+**/npm-debug.log
+.git
+.gitignore
+**/test
+**/*.md
+.env
+**/sleep_care.db
+data
+miniprogram

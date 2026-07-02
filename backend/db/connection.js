@@ -50,12 +50,13 @@ async function _saveSqlite(db) {
 async function _initMysql() {
   const mysql = require('mysql2/promise');
 
+  // 兼容两套环境变量名：DB_* (部署文档标准) 优先，MYSQL_* 兼容
   const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST || '127.0.0.1',
-    port: parseInt(process.env.MYSQL_PORT, 10) || 3306,
-    user: process.env.MYSQL_USER || 'root',
-    password: process.env.MYSQL_PASSWORD || '',
-    database: process.env.MYSQL_DATABASE || 'sleep_care',
+    host: process.env.DB_HOST || process.env.MYSQL_HOST || '127.0.0.1',
+    port: parseInt(process.env.DB_PORT || process.env.MYSQL_PORT, 10) || 3306,
+    user: process.env.DB_USER || process.env.MYSQL_USER || 'root',
+    password: process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD || '',
+    database: process.env.DB_NAME || process.env.MYSQL_DATABASE || 'sleep_care',
     waitForConnections: true,
     connectionLimit: 10,
     charset: 'utf8mb4'
@@ -203,12 +204,12 @@ async function saveDb0(db) {
  * @param {Array}  [params=[]] — 绑定参数
  * @returns {Promise<Object|null>} 结果对象，无匹配时返回 null
  */
-async function dbGetOne(db, sql, params = []) {
+function dbGetOne(db, sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
 
   let result = null;
-  const hasRow = await stmt.step();  // MySQL 返回 Promise<boolean>
+  const hasRow = stmt.step();  // SQLite 同步返回 boolean，MySQL 异步返回 Promise<boolean>
   if (hasRow) {
     result = stmt.getAsObject();
   }
@@ -225,12 +226,12 @@ async function dbGetOne(db, sql, params = []) {
  * @param {Array}  [params=[]] — 绑定参数
  * @returns {Promise<Array<Object>>} 结果对象数组
  */
-async function dbGetAll(db, sql, params = []) {
+function dbGetAll(db, sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
 
   const results = [];
-  while (await stmt.step()) {
+  while (stmt.step()) {
     results.push(stmt.getAsObject());
   }
 
