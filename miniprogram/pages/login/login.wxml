@@ -35,6 +35,11 @@
     <!-- 登录按钮，点击触发 handleLogin 方法 -->
     <button class="login-button" bindtap="handleLogin">登录</button>
 
+    <!-- 注册入口 -->
+    <view class="register-link">
+      <text bindtap="goToRegister">还没有账号？立即注册</text>
+    </view>
+
     <!-- 固定密码提示文字 -->
     <text class="password-hint">固定密码: 123456</text>
   </view>

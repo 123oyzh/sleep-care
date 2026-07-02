@@ -43,6 +43,13 @@ Page({
   },
 
   /**
+   * 跳转到注册页
+   */
+  goToRegister() {
+    wx.navigateTo({ url: '/pages/register/register' });
+  },
+
+  /**
    * 处理登录 — 校验手机号和密码后调用后台登录接口
    */
   handleLogin() {

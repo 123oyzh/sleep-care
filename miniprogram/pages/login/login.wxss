@@ -77,3 +77,11 @@ page {
   font-size: 24rpx;
   color: #999999;
 }
+
+/* 注册入口 */
+.register-link {
+  margin-top: 30rpx;
+  font-size: 28rpx;
+  color: #1677ff;
+  text-decoration: underline;
+}
