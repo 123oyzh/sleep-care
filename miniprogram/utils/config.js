@@ -1,13 +1,8 @@
 /**
- * 小程序全局配置
+ * 全局配置 — 统一管理 API 基础地址
  *
- * 本地开发：BASE_URL = 'http://localhost:3000'
- * 线上部署：BASE_URL = 'https://sleep-care-d7gd3tdy9fdaa87e9-1449296628.ap-shanghai.app.tcloudbase.com'
- *
- * 切换环境时只需修改这一处即可。
+ * 开发环境使用 localhost，部署时修改为生产域名。
  */
-
-// ⚠️ 部署到 CloudBase 后，把下面的 localhost 改成你的公网域名
-const BASE_URL = 'https://sleepcare-api-277257-9-1449652234.sh.run.tcloudbase.com';
+var BASE_URL = 'http://localhost:3000';
 
 module.exports = { BASE_URL };
