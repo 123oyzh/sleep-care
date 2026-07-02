@@ -8,6 +8,6 @@
  */
 
 // ⚠️ 部署到 CloudBase 后，把下面的 localhost 改成你的公网域名
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = 'https://sleep-care-d2gq3ydpc800cdc9-1449652234.ap-shanghai.app.tcloudbase.com';
 
 module.exports = { BASE_URL };
