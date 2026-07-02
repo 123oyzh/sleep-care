@@ -1,81 +1,241 @@
 /**
- * sql.js 数据库连接模块
+ * 数据库连接模块 — 支持 SQLite(sql.js) 和 MySQL(mysql2) 双模式
  *
- * 使用 sql.js（SQLite WASM 版，无需原生编译）管理数据库连接单例。
- * - getDb0(): 异步获取数据库连接单例，首次调用自动初始化
- * - saveDb0(): 调用 db.export() + fs.writeFileSync 持久化到磁盘
+ * 通过环境变量 DATABASE_TYPE 切换：
+ *   - sqlite (默认): 使用 sql.js WASM 版，文件持久化到 sleep_care.db
+ *   - mysql:  使用 mysql2 连接池，需配置 MYSQL_* 环境变量
  *
- * 数据库文件: 项目根目录/sleep_care.db
- * 依赖: sql.js
+ * 统一接口导出：getDb0(), saveDb0(), dbGetOne(), dbGetAll()
+ * 现有代码通过 await getDb0() 获取连接，API 完全兼容。
  */
 
-const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 
-// 数据库文件路径 —— 项目根目录下的 sleep_care.db
+// ── 数据库类型 ──────────────────────────────────────────────
+const DB_TYPE = (process.env.DATABASE_TYPE || 'sqlite').toLowerCase();
 const DB_PATH = path.resolve(__dirname, '..', '..', 'sleep_care.db');
 
-// 数据库连接单例（Promise<SQL.Database>）
+// 连接单例
 let dbPromise = null;
 
-/**
- * 获取 sql.js 数据库连接单例
- *
- * 首次调用流程：
- *   1. 加载 sql.js WASM 模块
- *   2. 若磁盘存在 sleep_care.db，则读取并恢复数据
- *   3. 若不存在，创建空白内存数据库
- *   4. 执行 PRAGMA foreign_keys = ON 启用外键约束
- *
- * @returns {Promise<SQL.Database>} 数据库连接实例
- */
-async function getDb0() {
-  if (dbPromise) {
-    return dbPromise;
+// ═══════════════════════════════════════════════════════════
+// SQLite 模式 — 使用 sql.js (现有逻辑)
+// ═══════════════════════════════════════════════════════════
+async function _initSqlite() {
+  const initSqlJs = require('sql.js');
+  const SQL = await initSqlJs();
+
+  let db;
+  if (fs.existsSync(DB_PATH)) {
+    const fileBuffer = fs.readFileSync(DB_PATH);
+    db = new SQL.Database(fileBuffer);
+  } else {
+    db = new SQL.Database();
   }
 
-  dbPromise = (async () => {
-    // 加载 sql.js WASM 模块
-    const SQL = await initSqlJs();
-
-    let db;
-    if (fs.existsSync(DB_PATH)) {
-      // 从磁盘加载已有数据库文件
-      const fileBuffer = fs.readFileSync(DB_PATH);
-      db = new SQL.Database(fileBuffer);
-    } else {
-      // 创建空白内存数据库
-      db = new SQL.Database();
-    }
-
-    // 启用外键约束（SQLite 默认关闭，每次连接均需手动开启）
-    db.run('PRAGMA foreign_keys = ON;');
-
-    return db;
-  })();
-
-  return dbPromise;
+  db.run('PRAGMA foreign_keys = ON;');
+  return db;
 }
 
-/**
- * 将内存数据库持久化到磁盘
- *
- * 调用 db.export() 导出 Uint8Array，
- * 通过 fs.writeFileSync 写入项目根目录的 sleep_care.db。
- * 默认使用单例 getDb0() 获取连接。
- *
- * @param {SQL.Database} [db] - 数据库连接实例，不传则使用单例
- */
-async function saveDb0(db) {
-  if (!db) {
-    db = await getDb0();
-  }
-
-  // db.export() 返回 Uint8Array，转换为 Buffer 写入磁盘
+async function _saveSqlite(db) {
   const binaryData = db.export();
   const buffer = Buffer.from(binaryData);
   fs.writeFileSync(DB_PATH, buffer);
 }
 
-module.exports = { getDb0, saveDb0 };
+// ═══════════════════════════════════════════════════════════
+// MySQL 模式 — 使用 mysql2 连接池 + 适配器
+// ═══════════════════════════════════════════════════════════
+async function _initMysql() {
+  const mysql = require('mysql2/promise');
+
+  const pool = mysql.createPool({
+    host: process.env.MYSQL_HOST || '127.0.0.1',
+    port: parseInt(process.env.MYSQL_PORT, 10) || 3306,
+    user: process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQL_PASSWORD || '',
+    database: process.env.MYSQL_DATABASE || 'sleep_care',
+    waitForConnections: true,
+    connectionLimit: 10,
+    charset: 'utf8mb4'
+  });
+
+  // 返回一个适配器对象，伪装成 sql.js 的 db 接口
+  // run(): 执行写/DDL 语句
+  // prepare(): 创建可复用的查询语句对象
+  return {
+    _pool: pool,
+    _type: 'mysql',
+
+    /** 执行写操作 / DDL */
+    run: async function (sql, params) {
+      const conn = await pool.getConnection();
+      try {
+        await conn.execute(sql, params || []);
+      } finally {
+        conn.release();
+      }
+    },
+
+    /** 创建 MySQL 适配器 PreparedStatement */
+    prepare: function (sql) {
+      return new _MysqlStmt(pool, sql);
+    }
+  };
+}
+
+/**
+ * MySQL 适配器 — 模拟 sql.js 的 PreparedStatement 接口
+ *
+ * 接口: bind(params), step(), getAsObject(), free()
+ * step() 是异步的（与 sql.js 不同），dbGetOne/dbGetAll 已适配
+ */
+class _MysqlStmt {
+  constructor(pool, sql) {
+    this._pool = pool;
+    this._sql = sql;
+    this._params = [];
+    this._rows = [];
+    this._index = -1;
+    this._executed = false;
+  }
+
+  /** 绑定参数 */
+  bind(params) {
+    this._params = params || [];
+  }
+
+  /**
+   * 执行查询并获取下一行
+   * MySQL 模式下返回 Promise<boolean>（sql.js 返回 boolean）
+   */
+  async step() {
+    if (!this._executed) {
+      const conn = await this._pool.getConnection();
+      try {
+        const [rows] = await conn.execute(this._sql, this._params);
+        this._rows = rows;
+      } finally {
+        conn.release();
+      }
+      this._executed = true;
+      this._index = -1;
+    }
+
+    this._index++;
+    return this._index < this._rows.length;
+  }
+
+  /** 获取当前行（与 sql.js getAsObject 一致） */
+  getAsObject() {
+    return this._rows[this._index] || null;
+  }
+
+  /** 释放资源（MySQL 下连接已归还，无需操作） */
+  free() {
+    this._rows = [];
+    this._executed = false;
+  }
+}
+
+/** MySQL 模式不需要 save，写出为 no-op */
+async function _saveMysql() {
+  // MySQL 自动持久化，无需手动保存
+}
+
+// ═══════════════════════════════════════════════════════════
+// 统一导出接口
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * 获取数据库连接单例
+ *
+ * 根据 DATABASE_TYPE 环境变量选择对应驱动。
+ * SQLite 模式返回 sql.js Database 实例；
+ * MySQL 模式返回适配器对象（含 run / prepare 方法）。
+ *
+ * @returns {Promise<Object>} 数据库连接实例
+ */
+async function getDb0() {
+  if (dbPromise) return dbPromise;
+
+  if (DB_TYPE === 'mysql') {
+    console.log('[db] 使用 MySQL 模式');
+    dbPromise = _initMysql();
+  } else {
+    console.log('[db] 使用 SQLite 模式 (sql.js)');
+    dbPromise = _initSqlite();
+  }
+
+  return dbPromise;
+}
+
+/**
+ * 持久化数据库到磁盘
+ *
+ * SQLite 模式：执行 db.export() + fs.writeFileSync
+ * MySQL 模式：空操作（MySQL 自动持久化）
+ *
+ * @param {Object} [db] - 数据库连接，不传则使用单例
+ */
+async function saveDb0(db) {
+  if (!db) db = await getDb0();
+
+  if (db._type === 'mysql') {
+    return _saveMysql();
+  }
+  return _saveSqlite(db);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 统一查询辅助函数 — 兼容 SQLite 和 MySQL
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * 查询单行数据
+ *
+ * SQLite：prepare + bind + step + getAsObject
+ * MySQL：prepare + bind + await step + getAsObject
+ *
+ * @param {Object} db — getDb0() 返回的连接对象
+ * @param {string} sql — SQL 语句（? 占位符）
+ * @param {Array}  [params=[]] — 绑定参数
+ * @returns {Promise<Object|null>} 结果对象，无匹配时返回 null
+ */
+async function dbGetOne(db, sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+
+  let result = null;
+  const hasRow = await stmt.step();  // MySQL 返回 Promise<boolean>
+  if (hasRow) {
+    result = stmt.getAsObject();
+  }
+
+  stmt.free();
+  return result;
+}
+
+/**
+ * 查询多行数据
+ *
+ * @param {Object} db — getDb0() 返回的连接对象
+ * @param {string} sql — SQL 语句（? 占位符）
+ * @param {Array}  [params=[]] — 绑定参数
+ * @returns {Promise<Array<Object>>} 结果对象数组
+ */
+async function dbGetAll(db, sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+
+  const results = [];
+  while (await stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+
+  stmt.free();
+  return results;
+}
+
+module.exports = { getDb0, saveDb0, dbGetOne, dbGetAll };

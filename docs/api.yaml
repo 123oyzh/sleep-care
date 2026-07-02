@@ -1,0 +1,863 @@
+openapi: "3.0.3"
+info:
+  title: 智能睡眠健康管理软件 API
+  description: |
+    智能睡眠环境调控设备 — 云后台 RESTful API。
+
+    ## 认证
+    除 `/api/auth/register`、`/api/auth/login`、`/api/users/doctors` 外，
+    所有接口需携带 `Authorization: Bearer <JWT>` 请求头。
+
+    ## 统一响应格式
+    ```json
+    { "code": 0, "message": "success", "data": {} }
+    ```
+    - `code: 0` = 成功
+    - `code: 1001` = 参数错误
+    - `code: 1002` = 未登录 / 无权限
+    - `code: 9999` = 服务器内部错误
+  version: "1.0.0"
+  contact:
+    name: 开发团队
+
+servers:
+  - url: http://localhost:3000
+    description: 本地开发服务器
+
+tags:
+  - name: Auth
+    description: 用户认证
+  - name: Device
+    description: 设备管理
+  - name: Sleep
+    description: 睡眠报告
+  - name: Settings
+    description: 作息设置
+  - name: Doctor
+    description: 医生授权 & 干预建议
+  - name: Public
+    description: 公开接口
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ── 通用响应 ──
+    SuccessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 1001
+        message:
+          type: string
+          example: 参数错误
+        data:
+          type: object
+          nullable: true
+          example: null
+
+    # ── 业务模型 ──
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 用户 ID
+        phone:
+          type: string
+          description: 手机号
+        nickname:
+          type: string
+          description: 昵称
+        role:
+          type: integer
+          description: 0=患者, 1=医生, 2=管理员
+
+    Device:
+      type: object
+      properties:
+        id:
+          type: integer
+        serial_no:
+          type: string
+          description: 设备序列号（虚拟设备为 VIR+16 位随机字符）
+        user_id:
+          type: integer
+        nickname:
+          type: string
+        is_virtual:
+          type: integer
+        online_status:
+          type: integer
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    SleepReport:
+      type: object
+      properties:
+        report_id:
+          type: integer
+        user_id:
+          type: integer
+        device_id:
+          type: integer
+        report_date:
+          type: string
+          example: "2026-07-01"
+        sleep_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 78
+        total_minutes:
+          type: integer
+          example: 395
+        deep_minutes:
+          type: integer
+          example: 87
+        light_minutes:
+          type: integer
+          example: 196
+        rem_minutes:
+          type: integer
+          example: 92
+        wake_minutes:
+          type: integer
+          example: 20
+        avg_heart_rate:
+          type: number
+          example: 64
+        awake_count:
+          type: integer
+          description: 觉醒次数（由 wake_minutes/3 估算）
+          example: 3
+
+    SleepStagesResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          example: "2026-07-01"
+        stages:
+          type: array
+          description: 48 个编码值（0=清醒, 1=浅睡, 2=深睡, 3=REM）
+          items:
+            type: integer
+            minimum: 0
+            maximum: 3
+          example: [0,1,1,2,2,2,1,1,3,3,1,1,2,2,2,1,1,3,1,1,2,2,1,1,3,3,1,1,2,1,1,3,3,1,1,2,1,1,1,3,3,1,1,2,1,1,1,3]
+        labels:
+          type: array
+          description: 48 个时间标签（每 10 分钟一个，00:00-07:50）
+          items:
+            type: string
+          example: ["00:00","00:10","00:20","00:30","00:40","00:50"]
+
+    NoiseResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          example: "2026-07-01"
+        noise:
+          type: array
+          description: 144 个噪音值（每 10 分钟一个，24 小时，单位 dB）
+          items:
+            type: number
+          example: [32.5,31.8,33.2,34.1,32.9]
+        labels:
+          type: array
+          description: 144 个时间标签（00:00-23:50）
+          items:
+            type: string
+          example: ["00:00","00:10","00:20","00:30","00:40","00:50","01:00"]
+
+    SummaryResponse:
+      type: object
+      properties:
+        period:
+          type: string
+          enum: [day, week, month]
+          example: day
+        labels:
+          type: array
+          description: 时间标签（day: MM-DD, week: 起止日期, month: YYYY-MM）
+          items:
+            type: string
+          example: ["06-25","06-26","06-27","06-28","06-29","06-30","07-01"]
+        scores:
+          type: array
+          description: 评分数组
+          items:
+            type: integer
+          example: [72,85,68,91,77,83,78]
+        avg_score:
+          type: integer
+          description: 周期平均分
+          example: 79
+
+    SettingsPlan:
+      type: object
+      properties:
+        bedTime:
+          type: string
+          example: "23:00"
+        wakeTime:
+          type: string
+          example: "07:00"
+        sunriseDuration:
+          type: integer
+          minimum: 5
+          maximum: 30
+          example: 10
+
+    DoctorInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+        phone:
+          type: string
+          example: "13800138001"
+        nickname:
+          type: string
+          example: "张医生"
+
+    DoctorGranted:
+      type: object
+      properties:
+        id:
+          type: integer
+        doctor_id:
+          type: integer
+        doctor_name:
+          type: string
+          example: "张医生"
+        doctor_phone:
+          type: string
+          example: "13800138001"
+        status:
+          type: string
+          enum: [pending, active, revoked, expired]
+          example: active
+        expire_date:
+          type: string
+          example: "2026-07-31"
+        note:
+          type: string
+          description: 干预建议内容
+
+    DoctorPatient:
+      type: object
+      properties:
+        patient_id:
+          type: integer
+        nickname:
+          type: string
+        phone:
+          type: string
+        status:
+          type: string
+          enum: [pending, active]
+          example: active
+        expire_date:
+          type: string
+          example: "2026-07-31"
+        latest_score:
+          type: integer
+          nullable: true
+          description: 最新睡眠评分
+
+    PatientNote:
+      type: object
+      properties:
+        doctor_id:
+          type: integer
+        doctor_name:
+          type: string
+        doctor_phone:
+          type: string
+          description: 脱敏手机号 (138****8001)
+        note:
+          type: string
+        note_updated_at:
+          type: string
+          nullable: true
+
+    NoteStatus:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 1
+        latest_note_updated_at:
+          type: string
+          nullable: true
+        latest_doctor_name:
+          type: string
+          nullable: true
+
+# ═══════════════════════════════════════════════════════════════
+# 接口定义
+# ═══════════════════════════════════════════════════════════════
+paths:
+
+  # ── Auth ──
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: 用户注册
+      description: 手机号 + 密码注册，支持 role 参数指定角色。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              properties:
+                phone:
+                  type: string
+                  description: 11 位手机号
+                  example: "13800138000"
+                password:
+                  type: string
+                  minLength: 6
+                  description: 密码（≥6 位）
+                  example: "123456"
+                nickname:
+                  type: string
+                  description: 昵称（可选，默认"用户"）
+                  example: "张三"
+                role:
+                  description: 角色（patient=0/doctor=1/admin=2，支持传字符串或整数，默认 0）
+                  oneOf:
+                    - type: integer
+                    - type: string
+                  example: 0
+      responses:
+        "200":
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/User"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: 用户登录
+      description: 手机号 + 密码登录，返回 JWT Token（7 天有效期）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              properties:
+                phone:
+                  type: string
+                  example: "13800138000"
+                password:
+                  type: string
+                  example: "123456"
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token:
+                            type: string
+                            example: "eyJhbGciOiJIUzI1NiIs..."
+                          id:
+                            type: integer
+                          phone:
+                            type: string
+                          nickname:
+                            type: string
+                          role:
+                            type: integer
+
+  # ── Device ──
+  /api/device/list:
+    get:
+      tags: [Device]
+      summary: 获取设备列表
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: 设备列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Device"
+
+  /api/device/add:
+    post:
+      tags: [Device]
+      summary: 添加设备
+      description: |
+        虚拟设备 (is_virtual=true) 自动生成 "VIR"+16 位随机序列号；
+        真实设备 (is_virtual=false) 需传入 device_serial（16 位字母数字）。
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_virtual]
+              properties:
+                is_virtual:
+                  type: boolean
+                  example: true
+                device_serial:
+                  type: string
+                  description: 真实设备时才需要，16 位字母数字
+                  example: "ABCD1234EFGH5678"
+      responses:
+        "200":
+          description: 添加成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Device"
+
+  # ── Sleep ──
+  /api/sleep/report/daily:
+    get:
+      tags: [Sleep]
+      summary: 获取每日睡眠报告
+      description: 查询指定日期的睡眠报告，不存在时自动生成模拟数据。
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: YYYY-MM-DD，默认昨天
+          example: "2026-07-01"
+      responses:
+        "200":
+          description: 睡眠报告
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SleepReport"
+
+  /api/sleep/stages:
+    get:
+      tags: [Sleep]
+      summary: 获取睡眠分期数据
+      description: 返回 48 个分期编码（每 10 分钟一个，00:00-07:50），编码 0=清醒 1=浅睡 2=深睡 3=REM。
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: YYYY-MM-DD，默认昨天
+          example: "2026-07-01"
+      responses:
+        "200":
+          description: 分期数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SleepStagesResponse"
+
+  /api/sleep/noise:
+    get:
+      tags: [Sleep]
+      summary: 获取环境噪音数据
+      description: |
+        返回 144 个噪音数据点（每 10 分钟一个，24 小时）。
+        夜间 (22:00-06:00) 30-40dB，白天 (06:00-22:00) 45-65dB，
+        0-7 点、1-22 点区间平滑过渡。
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: YYYY-MM-DD，默认昨天
+      responses:
+        "200":
+          description: 噪音数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/NoiseResponse"
+
+  /api/sleep/summary:
+    get:
+      tags: [Sleep]
+      summary: 获取睡眠评分趋势
+      description: |
+        日视图：最近 7 天每日评分；
+        周视图：最近 6 周每周平均评分（自然周，周日开始）；
+        月视图：最近 6 月每月平均评分（自然月）。
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: 基准日期，YYYY-MM-DD，默认昨天
+      responses:
+        "200":
+          description: 趋势数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SummaryResponse"
+
+  # ── Settings ──
+  /api/setting/plan:
+    get:
+      tags: [Settings]
+      summary: 获取作息设置
+      description: 读取当前用户的起床/就寝时间、日出模拟时长。
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: 作息设置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SettingsPlan"
+    put:
+      tags: [Settings]
+      summary: 更新作息设置
+      description: 修改就寝时间、起床时间、日出模拟时长（5-30 分钟）。
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bedTime, wakeTime, sunriseDuration]
+              properties:
+                bedTime:
+                  type: string
+                  pattern: "^\\d{2}:\\d{2}$"
+                  example: "23:00"
+                wakeTime:
+                  type: string
+                  pattern: "^\\d{2}:\\d{2}$"
+                  example: "07:00"
+                sunriseDuration:
+                  type: integer
+                  minimum: 5
+                  maximum: 30
+                  example: 10
+      responses:
+        "200":
+          description: 保存成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SettingsPlan"
+
+  # ── Doctor ──
+  /api/doctor/grant:
+    post:
+      tags: [Doctor]
+      summary: 患者授权医生
+      description: 支持传 doctor_id（数字）或 doctor_phone（字符串），优先 doctor_id。
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                doctor_id:
+                  type: integer
+                  description: 医生用户 ID（优先）
+                  example: 3
+                doctor_phone:
+                  type: string
+                  description: 医生手机号（向后兼容）
+                  example: "13800138001"
+      responses:
+        "200":
+          description: 授权成功 / 已存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/doctor/revoke:
+    delete:
+      tags: [Doctor]
+      summary: 患者撤销授权
+      description: 将 pending 或 active 状态的授权改为 revoked。
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doctor_id]
+              properties:
+                doctor_id:
+                  type: integer
+      responses:
+        "200":
+          description: 已撤销
+
+  /api/doctor/granted:
+    get:
+      tags: [Doctor]
+      summary: 获取已授权医生列表
+      description: 返回当前患者 pending/active 且未过期的授权。
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: 已授权列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/DoctorGranted"
+
+  /api/doctor/confirm:
+    put:
+      tags: [Doctor]
+      summary: 医生确认授权
+      description: 仅限医生角色调用，将 pending 改为 active。
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patient_id]
+              properties:
+                patient_id:
+                  type: integer
+      responses:
+        "200":
+          description: 已确认 / 已是 active
+
+  /api/doctor/patients:
+    get:
+      tags: [Doctor]
+      summary: 医生查看患者列表
+      description: 仅限医生角色调用，返回 pending/active 且未过期的授权患者。
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: 患者列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/DoctorPatient"
+
+  /api/doctor/patient/data:
+    get:
+      tags: [Doctor]
+      summary: 医生查看患者报告
+      description: 仅限医生角色调用，需 status=active 授权。报告不存在时自动生成。
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: patient_id
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: YYYY-MM-DD，默认昨天
+      responses:
+        "200":
+          description: 患者报告
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SleepReport"
+
+  /api/doctor/note:
+    put:
+      tags: [Doctor]
+      summary: 保存干预建议
+      description: 医生填写/更新对患者的干预建议，需 status=active 授权。
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patient_id, note]
+              properties:
+                patient_id:
+                  type: integer
+                note:
+                  type: string
+                  description: 建议内容
+                  example: "建议保持规律作息，睡前避免咖啡和浓茶。"
+      responses:
+        "200":
+          description: 保存成功
+    get:
+      tags: [Doctor]
+      summary: 获取干预建议
+      description: 医生读取自己对某患者的建议。
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: patient_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 建议内容
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PatientNote"
+
+  # ── Public ──
+  /api/users/doctors:
+    get:
+      tags: [Public]
+      summary: 获取医生列表
+      description: 公开接口，查询所有 role=1 且 status=0 的医生用户。
+      responses:
+        "200":
+          description: 医生列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/DoctorInfo"

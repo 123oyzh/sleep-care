@@ -18,7 +18,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
 const { initDatabase0 } = require('./db/init');
-const { getDb0, saveDb0 } = require('./db/connection');
+const { getDb0, saveDb0, dbGetOne, dbGetAll } = require('./db/connection');
 
 // 加载 .env 环境变量
 dotenv.config();
@@ -48,62 +48,8 @@ app.use(express.static('public', {
   }
 }));
 
-// ============================================================
-// 数据库查询辅助函数
-// 使用 sql.js 的 prepare + bind + step + getAsObject 方式
-// ============================================================
-
-/**
- * 查询单行数据
- *
- * 使用 sql.js 预处理语句绑定参数，执行 step() 获取第一行结果。
- * 无匹配行时返回 null。
- *
- * @param {SQL.Database} db - sql.js 数据库连接实例
- * @param {string} sql - SQL 查询语句（使用 ? 占位符）
- * @param {Array} [params=[]] - 绑定的参数数组
- * @returns {Object|null} 查询结果对象，无结果返回 null
- */
-function dbGetOne(db, sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-
-  let result = null;
-  if (stmt.step()) {
-    // 将当前行转换为普通 JS 对象
-    result = stmt.getAsObject();
-  }
-
-  // 释放预处理语句资源
-  stmt.free();
-  return result;
-}
-
-/**
- * 查询多行数据
- *
- * 使用 sql.js 预处理语句绑定参数，循环 step() 收集所有匹配行。
- *
- * @param {SQL.Database} db - sql.js 数据库连接实例
- * @param {string} sql - SQL 查询语句（使用 ? 占位符）
- * @param {Array} [params=[]] - 绑定的参数数组
- * @returns {Array<Object>} 查询结果对象数组，无结果返回空数组 []
- */
-function dbGetAll(db, sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-
-  const results = [];
-  while (stmt.step()) {
-    // 将当前行转换为普通 JS 对象并加入结果集
-    results.push(stmt.getAsObject());
-  }
-
-  // 释放预处理语句资源
-  stmt.free();
-  return results;
-}
-
+// dbGetOne / dbGetAll 已统一抽取到 db/connection.js 中，
+// 通过 require('./db/connection') 导入，支持 SQLite / MySQL 双模式
 // ============================================================
 // JWT 认证中间件
 // 从 Authorization 头提取 Bearer Token，校验后挂载 req.user
@@ -1693,7 +1639,7 @@ app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
             deep_minutes, light_minutes, rem_minutes, wake_minutes,
             avg_heart_rate, events_json, heart_rate_curve, respiration_curve,
             stage_curve, noise_curve, noise_json, sleep_stages_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [patientId, deviceId, date, metrics.sleepScore, metrics.totalMinutes,
            metrics.deepMinutes, metrics.lightMinutes, metrics.remMinutes,
            metrics.wakeMinutes, metrics.avgHeartRate,
@@ -1954,6 +1900,22 @@ app.get('/api/users/doctors', async (req, res) => {
     console.error('[users/doctors] 异常:', err.message);
     res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
   }
+});
+
+// ============================================================
+// 统一错误处理中间件 — 捕获所有未处理的异常
+// 必须放在所有路由注册之后，Express 按注册顺序匹配
+// ============================================================
+app.use(function (err, req, res, next) {
+  // 输出完整错误堆栈到控制台，方便调试
+  console.error('[error] 未处理的异常:');
+  console.error(err.stack || err.message || err);
+
+  // 返回格式化的错误响应
+  res.status(500).json({
+    code: 500,
+    message: '服务器内部错误'
+  });
 });
 
 // ============================================================
