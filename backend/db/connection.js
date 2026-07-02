@@ -196,20 +196,22 @@ async function saveDb0(db) {
 /**
  * 查询单行数据
  *
- * SQLite：prepare + bind + step + getAsObject
- * MySQL：prepare + bind + await step + getAsObject
+ * SQLite：prepare + bind + step + getAsObject（step 同步返回 boolean）
+ * MySQL：prepare + bind + await step + getAsObject（step 异步返回 Promise<boolean>）
+ *
+ * 统一用 await 处理：SQLite 下 await 同步值无副作用，MySQL 下正确等待异步结果。
  *
  * @param {Object} db — getDb0() 返回的连接对象
  * @param {string} sql — SQL 语句（? 占位符）
  * @param {Array}  [params=[]] — 绑定参数
  * @returns {Promise<Object|null>} 结果对象，无匹配时返回 null
  */
-function dbGetOne(db, sql, params = []) {
+async function dbGetOne(db, sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
 
   let result = null;
-  const hasRow = stmt.step();  // SQLite 同步返回 boolean，MySQL 异步返回 Promise<boolean>
+  const hasRow = await stmt.step();  // 统一 await：兼容 SQLite(同步) 和 MySQL(异步)
   if (hasRow) {
     result = stmt.getAsObject();
   }
@@ -226,12 +228,12 @@ function dbGetOne(db, sql, params = []) {
  * @param {Array}  [params=[]] — 绑定参数
  * @returns {Promise<Array<Object>>} 结果对象数组
  */
-function dbGetAll(db, sql, params = []) {
+async function dbGetAll(db, sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
 
   const results = [];
-  while (stmt.step()) {
+  while (await stmt.step()) {  // 统一 await：兼容 SQLite(同步) 和 MySQL(异步)
     results.push(stmt.getAsObject());
   }
 

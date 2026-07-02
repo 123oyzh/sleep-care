@@ -1,4 +1,5 @@
 // pages/home/home.js — 首页逻辑，加载昨日睡眠报告
+const { BASE_URL } = require('../utils/config');
 Page({
 
   data: {
@@ -49,7 +50,7 @@ Page({
     this.setData({ loading: true, errorMsg: '' });
 
     wx.request({
-      url: 'http://localhost:3000/api/sleep/report/daily',
+      url: BASE_URL + '/api/sleep/report/daily',
       method: 'GET',
       header: {
         'Authorization': 'Bearer ' + token

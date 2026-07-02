@@ -1,5 +1,6 @@
 // pages/report/report.js — 睡眠报告页面逻辑
 // 日期选择器 + 睡眠分期柱状图 + 环境噪音曲线图 + 日周月趋势图
+const { BASE_URL } = require('../../utils/config');
 const echarts = require('../../components/ec-canvas/echarts');
 
 Page({
@@ -89,7 +90,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/sleep/summary',
+      url: BASE_URL + '/api/sleep/summary',
       method: 'GET',
       data: {
         period: self.data.currentPeriod,
@@ -252,7 +253,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/sleep/stages',
+      url: BASE_URL + '/api/sleep/stages',
       method: 'GET',
       data: { date: this.data.selectedDate },
       header: { 'Authorization': 'Bearer ' + token },
@@ -352,7 +353,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/sleep/noise',
+      url: BASE_URL + '/api/sleep/noise',
       method: 'GET',
       data: { date: this.data.selectedDate },
       header: { 'Authorization': 'Bearer ' + token },
@@ -451,7 +452,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/patient/notes',
+      url: BASE_URL + '/api/patient/notes',
       method: 'GET',
       header: { 'Authorization': 'Bearer ' + token },
       success: function (res) {

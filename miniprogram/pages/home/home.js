@@ -1,4 +1,5 @@
 // pages/home/home.js — 首页逻辑，加载昨日睡眠报告（含 5 分钟缓存）
+const { BASE_URL } = require('../../utils/config');
 Page({
 
   // 缓存配置
@@ -154,7 +155,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/sleep/report/daily',
+      url: BASE_URL + '/api/sleep/report/daily',
       method: 'GET',
       header: { 'Authorization': 'Bearer ' + token },
       success: function (res) {
@@ -218,7 +219,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/patient/notes/status',
+      url: BASE_URL + '/api/patient/notes/status',
       method: 'GET',
       header: { 'Authorization': 'Bearer ' + token },
       success: function (res) {
@@ -251,7 +252,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/patient/notes',
+      url: BASE_URL + '/api/patient/notes',
       method: 'GET',
       header: { 'Authorization': 'Bearer ' + token },
       success: function (res) {

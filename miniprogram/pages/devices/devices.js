@@ -1,4 +1,5 @@
 // pages/devices/devices.js — 设备管理页面逻辑
+const { BASE_URL } = require('../../utils/config');
 Page({
 
   /**
@@ -36,7 +37,7 @@ Page({
 
     // GET /api/device/list — 获取设备列表
     wx.request({
-      url: 'http://localhost:3000/api/device/list',
+      url: BASE_URL + '/api/device/list',
       method: 'GET',
       header: {
         'Authorization': 'Bearer ' + token
@@ -82,7 +83,7 @@ Page({
 
     // POST /api/device/add — 添加虚拟设备
     wx.request({
-      url: 'http://localhost:3000/api/device/add',
+      url: BASE_URL + '/api/device/add',
       method: 'POST',
       header: {
         'Content-Type': 'application/json',
@@ -144,7 +145,7 @@ Page({
 
         // DELETE /api/devices/:id — 删除指定设备
         wx.request({
-          url: 'http://localhost:3000/api/devices/' + deviceId,
+          url: BASE_URL + '/api/devices/' + deviceId,
           method: 'DELETE',
           header: {
             'Authorization': 'Bearer ' + token

@@ -1,4 +1,5 @@
 // pages/register/register.js — 用户注册页面逻辑
+const { BASE_URL } = require('../../utils/config');
 Page({
 
   data: {
@@ -18,7 +19,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/auth/register',
+      url: BASE_URL + '/api/auth/register',
       method: 'POST',
       header: { 'Content-Type': 'application/json' },
       data: {

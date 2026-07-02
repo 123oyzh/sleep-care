@@ -40,11 +40,16 @@ app.use(cors());
 app.use(express.json());
 
 // 配置静态文件服务（医生端 Web 页面），禁用缓存方便开发调试
+// 强制 charset=utf-8 避免 doctor.html 中文乱码
 app.use(express.static('public', {
-  setHeaders: function (res) {
+  setHeaders: function (res, filePath) {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
+    // 对 HTML/CSS/JS 文件强制 UTF-8 编码
+    if (filePath.endsWith('.html') || filePath.endsWith('.css') || filePath.endsWith('.js')) {
+      res.set('Content-Type', res.getHeader('Content-Type') + '; charset=utf-8');
+    }
   }
 }));
 
@@ -75,17 +80,61 @@ function authenticateToken(req, res, next) {
 // ============================================================
 // 健康检查接口
 // GET / — 返回服务运行状态
+// GET /api/health — 返回数据库连接状态
 // ============================================================
 app.get('/', (req, res) => {
   res.json({
     code: 0,
-    message: 'success',
+    message: 'SleepCare API 服务运行中',
     data: {
-      service: 'sleep-care-api',
-      status: 'running',
+      name: 'SleepCare Backend',
+      version: '1.0.0',
       timestamp: new Date().toISOString()
     }
   });
+});
+
+app.get('/api/health', async (req, res) => {
+  try {
+    const db = await getDb0();
+
+    if (db._type === 'mysql') {
+      // MySQL 模式：查询表列表验证连接
+      const tables = await dbGetAll(db, 'SHOW TABLES', []);
+      const tableNames = tables.map(function (t) {
+        return Object.values(t)[0];
+      });
+      res.json({
+        code: 0,
+        message: 'MySQL 连接正常',
+        data: {
+          db_type: 'mysql',
+          database: process.env.DB_NAME || 'sleep_care',
+          tables: tableNames,
+          table_count: tableNames.length
+        }
+      });
+    } else {
+      // SQLite 模式
+      res.json({
+        code: 0,
+        message: 'SQLite 连接正常',
+        data: {
+          db_type: 'sqlite',
+          database: 'sleep_care.db',
+          tables: ['users', 'devices', 'sleep_reports', 'user_settings', 'doctor_authorizations'],
+          table_count: 5
+        }
+      });
+    }
+  } catch (err) {
+    console.error('[health] 数据库连接异常:', err.message);
+    res.json({
+      code: 9999,
+      message: '数据库连接异常: ' + err.message,
+      data: null
+    });
+  }
 });
 
 // ============================================================
@@ -115,7 +164,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     // --- 检查手机号是否已注册 ---
-    const existing = dbGetOne(db, 'SELECT user_id FROM users WHERE phone = ?', [phone]);
+    const existing = await dbGetOne(db, 'SELECT user_id FROM users WHERE phone = ?', [phone]);
     if (existing) {
       return res.json({ code: 1001, message: '该手机号已注册', data: null });
     }
@@ -147,7 +196,7 @@ app.post('/api/auth/register', async (req, res) => {
     const displayName = nickname && nickname.trim() ? nickname.trim() : '用户';
 
     try {
-      db.run(
+      await db.run(
         `INSERT INTO users (phone, password_hash, nickname, role, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, 0, ?, ?)`,
         [phone, passwordHash, displayName, userRole, now, now]
@@ -164,7 +213,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     // --- 查询刚插入的用户信息 ---
-    const user = dbGetOne(db, 'SELECT user_id, phone, nickname, role FROM users WHERE phone = ?', [phone]);
+    const user = await dbGetOne(db, 'SELECT user_id, phone, nickname, role FROM users WHERE phone = ?', [phone]);
 
     // --- 返回成功响应 ---
     res.json({
@@ -199,7 +248,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // --- 按 phone 查找用户 ---
-    const user = dbGetOne(db,
+    const user = await dbGetOne(db,
       'SELECT user_id, phone, password_hash, nickname, role, status FROM users WHERE phone = ?',
       [phone]
     );
@@ -226,7 +275,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // --- 更新最近登录时间 ---
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.run('UPDATE users SET updated_at = ? WHERE user_id = ?', [now, user.user_id]);
+    await db.run('UPDATE users SET updated_at = ? WHERE user_id = ?', [now, user.user_id]);
     await saveDb0(db);
 
     // --- 返回登录成功响应 ---
@@ -264,7 +313,7 @@ app.get('/api/device/list', authenticateToken, async (req, res) => {
     const userId = req.user.id; // 从 JWT 解析的用户 ID
 
     // 查询当前用户的所有设备，按创建时间倒序
-    const devices = dbGetAll(db,
+    const devices = await dbGetAll(db,
       'SELECT * FROM devices WHERE user_id = ? ORDER BY created_at DESC',
       [userId]
     );
@@ -323,7 +372,7 @@ app.post('/api/device/add', authenticateToken, async (req, res) => {
     const isVirtualFlag = is_virtual ? 1 : 0;
 
     try {
-      db.run(
+      await db.run(
         `INSERT INTO devices (user_id, serial_no, nickname, is_virtual, online_status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [userId, serialNo, '我的设备', isVirtualFlag, 1, now, now]
@@ -340,7 +389,7 @@ app.post('/api/device/add', authenticateToken, async (req, res) => {
     }
 
     // --- 查询刚插入的设备并返回 ---
-    const device = dbGetOne(db,
+    const device = await dbGetOne(db,
       'SELECT * FROM devices WHERE serial_no = ?',
       [serialNo]
     );
@@ -378,7 +427,7 @@ app.put('/api/devices/:id', authenticateToken, async (req, res) => {
     }
 
     // --- 查询设备，验证所有权 ---
-    const device = dbGetOne(db,
+    const device = await dbGetOne(db,
       'SELECT * FROM devices WHERE id = ?',
       [deviceId]
     );
@@ -393,7 +442,7 @@ app.put('/api/devices/:id', authenticateToken, async (req, res) => {
 
     // --- 更新昵称 ---
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.run(
+    await db.run(
       'UPDATE devices SET nickname = ?, updated_at = ? WHERE id = ?',
       [nickname.trim(), now, deviceId]
     );
@@ -401,7 +450,7 @@ app.put('/api/devices/:id', authenticateToken, async (req, res) => {
     await saveDb0(db);
 
     // --- 返回更新后的设备 ---
-    const updatedDevice = dbGetOne(db,
+    const updatedDevice = await dbGetOne(db,
       'SELECT * FROM devices WHERE id = ?',
       [deviceId]
     );
@@ -432,7 +481,7 @@ app.delete('/api/devices/:id', authenticateToken, async (req, res) => {
     const deviceId = parseInt(req.params.id, 10);
 
     // --- 查询设备，验证所有权 ---
-    const device = dbGetOne(db,
+    const device = await dbGetOne(db,
       'SELECT * FROM devices WHERE id = ?',
       [deviceId]
     );
@@ -446,7 +495,7 @@ app.delete('/api/devices/:id', authenticateToken, async (req, res) => {
     }
 
     // --- 删除设备 ---
-    db.run('DELETE FROM devices WHERE id = ?', [deviceId]);
+    await db.run('DELETE FROM devices WHERE id = ?', [deviceId]);
     await saveDb0(db);
 
     res.json({
@@ -641,14 +690,14 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
     }
 
     // --- 获取用户的第一台设备，无设备时 deviceId 暂用 0 ---
-    const device = dbGetOne(db,
+    const device = await dbGetOne(db,
       'SELECT id FROM devices WHERE user_id = ? LIMIT 1',
       [userId]
     );
     const deviceId = device ? device.id : 0;
 
     // --- 先查询该用户+设备+日期是否已有报告 ---
-    const existing = dbGetOne(db,
+    const existing = await dbGetOne(db,
       'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
       [userId, deviceId, date]
     );
@@ -679,7 +728,7 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
 
     // --- INSERT INTO sleep_reports ---
     try {
-      db.run(
+      await db.run(
         `INSERT INTO sleep_reports
          (user_id, device_id, report_date, sleep_score, total_minutes,
           deep_minutes, light_minutes, rem_minutes, wake_minutes,
@@ -700,7 +749,7 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
       // --- 处理 UNIQUE 约束异常（并发场景）---
       if (insertErr.message && insertErr.message.includes('UNIQUE')) {
         // 并发时另一请求已插入，重新查询并返回
-        const retry = dbGetOne(db,
+        const retry = await dbGetOne(db,
           'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
           [userId, deviceId, date]
         );
@@ -717,7 +766,7 @@ app.get('/api/sleep/report/daily', authenticateToken, async (req, res) => {
     }
 
     // --- 查询新插入的记录，补上 awake_count 后返回 ---
-    const report = dbGetOne(db,
+    const report = await dbGetOne(db,
       'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
       [userId, deviceId, date]
     );
@@ -761,14 +810,14 @@ app.get('/api/sleep/stages', authenticateToken, async (req, res) => {
     }
 
     // --- 获取用户的第一台设备，无设备时 deviceId 暂用 0 ---
-    const device = dbGetOne(db,
+    const device = await dbGetOne(db,
       'SELECT id FROM devices WHERE user_id = ? LIMIT 1',
       [userId]
     );
     const deviceId = device ? device.id : 0;
 
     // --- 查询 sleep_reports 表中该用户+设备+日期的记录 ---
-    const existing = dbGetOne(db,
+    const existing = await dbGetOne(db,
       'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
       [userId, deviceId, date]
     );
@@ -811,7 +860,7 @@ app.get('/api/sleep/stages', authenticateToken, async (req, res) => {
     // --- 如果报告记录不存在，先 INSERT 基础指标 ---
     if (!existing) {
       try {
-        db.run(
+        await db.run(
           `INSERT INTO sleep_reports
            (user_id, device_id, report_date, sleep_score, total_minutes,
             deep_minutes, light_minutes, rem_minutes, wake_minutes,
@@ -829,7 +878,7 @@ app.get('/api/sleep/stages', authenticateToken, async (req, res) => {
       } catch (insertErr) {
         // --- 处理 UNIQUE 约束异常（并发场景）：已有记录则执行 UPDATE ---
         if (insertErr.message && insertErr.message.includes('UNIQUE')) {
-          db.run(
+          await db.run(
             'UPDATE sleep_reports SET sleep_stages_json = ? WHERE user_id = ? AND device_id = ? AND report_date = ?',
             [stagesJson, userId, deviceId, date]
           );
@@ -840,7 +889,7 @@ app.get('/api/sleep/stages', authenticateToken, async (req, res) => {
       }
     } else {
       // --- 记录已存在但 sleep_stages_json 为空，执行 UPDATE ---
-      db.run(
+      await db.run(
         'UPDATE sleep_reports SET sleep_stages_json = ? WHERE report_id = ?',
         [stagesJson, existing.report_id]
       );
@@ -886,14 +935,14 @@ app.get('/api/sleep/noise', authenticateToken, async (req, res) => {
     }
 
     // --- 获取用户第一台设备，无设备时 deviceId 暂用 0 ---
-    const device = dbGetOne(db,
+    const device = await dbGetOne(db,
       'SELECT id FROM devices WHERE user_id = ? LIMIT 1',
       [userId]
     );
     const deviceId = device ? device.id : 0;
 
     // --- 查询 sleep_reports 表中该用户+设备+日期的记录 ---
-    const existing = dbGetOne(db,
+    const existing = await dbGetOne(db,
       'SELECT * FROM sleep_reports WHERE user_id = ? AND device_id = ? AND report_date = ?',
       [userId, deviceId, date]
     );
@@ -965,7 +1014,7 @@ app.get('/api/sleep/noise', authenticateToken, async (req, res) => {
     if (!existing) {
       const metrics = generateBaseMetrics(rand);
       try {
-        db.run(
+        await db.run(
           `INSERT INTO sleep_reports
            (user_id, device_id, report_date, sleep_score, total_minutes,
             deep_minutes, light_minutes, rem_minutes, wake_minutes,
@@ -984,7 +1033,7 @@ app.get('/api/sleep/noise', authenticateToken, async (req, res) => {
       } catch (insertErr) {
         // 并发冲突 → UPDATE
         if (insertErr.message && insertErr.message.includes('UNIQUE')) {
-          db.run(
+          await db.run(
             'UPDATE sleep_reports SET noise_json = ? WHERE user_id = ? AND device_id = ? AND report_date = ?',
             [noiseJson, userId, deviceId, date]
           );
@@ -995,7 +1044,7 @@ app.get('/api/sleep/noise', authenticateToken, async (req, res) => {
       }
     } else {
       // 记录已存在但 noise_json 为空，执行 UPDATE
-      db.run(
+      await db.run(
         'UPDATE sleep_reports SET noise_json = ? WHERE report_id = ?',
         [noiseJson, existing.report_id]
       );
@@ -1154,7 +1203,7 @@ app.get('/api/setting/plan', authenticateToken, async (req, res) => {
     const userId = req.user.id;
 
     // 查询已有设置
-    const existing = dbGetOne(db,
+    const existing = await dbGetOne(db,
       'SELECT bedtime, wakeup_time, sunrise_duration FROM user_settings WHERE user_id = ?',
       [userId]
     );
@@ -1173,7 +1222,7 @@ app.get('/api/setting/plan', authenticateToken, async (req, res) => {
     }
 
     // 无记录则插入默认值
-    db.run(
+    await db.run(
       'INSERT INTO user_settings (user_id, bedtime, wakeup_time, sunrise_duration) VALUES (?, ?, ?, ?)',
       [userId, '23:00', '07:00', 10]
     );
@@ -1216,18 +1265,18 @@ app.put('/api/setting/plan', authenticateToken, async (req, res) => {
     }
 
     // 使用 UPSERT 语义：先尝试 UPDATE，若无匹配行则 INSERT
-    const existing = dbGetOne(db,
+    const existing = await dbGetOne(db,
       'SELECT user_id FROM user_settings WHERE user_id = ?',
       [userId]
     );
 
     if (existing) {
-      db.run(
+      await db.run(
         'UPDATE user_settings SET bedtime = ?, wakeup_time = ?, sunrise_duration = ? WHERE user_id = ?',
         [bedTime, wakeTime, duration, userId]
       );
     } else {
-      db.run(
+      await db.run(
         'INSERT INTO user_settings (user_id, bedtime, wakeup_time, sunrise_duration) VALUES (?, ?, ?, ?)',
         [userId, bedTime, wakeTime, duration]
       );
@@ -1272,7 +1321,7 @@ app.post('/api/doctor/grant', authenticateToken, async (req, res) => {
     if (doctor_id !== undefined && doctor_id !== null) {
       // 方式1：通过 doctor_id 直接查找
       const id = parseInt(doctor_id, 10);
-      doctorInfo = dbGetOne(db,
+      doctorInfo = await dbGetOne(db,
         'SELECT user_id, nickname, phone FROM users WHERE user_id = ? AND role = 1',
         [id]
       );
@@ -1282,7 +1331,7 @@ app.post('/api/doctor/grant', authenticateToken, async (req, res) => {
       doctorUserId = doctorInfo.user_id;
     } else if (doctor_phone) {
       // 方式2：通过 doctor_phone 查找（向后兼容）
-      doctorInfo = dbGetOne(db,
+      doctorInfo = await dbGetOne(db,
         'SELECT user_id, nickname, phone FROM users WHERE phone = ? AND role = 1',
         [doctor_phone]
       );
@@ -1295,7 +1344,7 @@ app.post('/api/doctor/grant', authenticateToken, async (req, res) => {
     }
 
     // --- 检查是否已有 pending 或 active 授权 ---
-    const existing = dbGetOne(db,
+    const existing = await dbGetOne(db,
       'SELECT id, status FROM doctor_authorizations WHERE patient_id = ? AND doctor_id = ? AND status IN (\'pending\',\'active\')',
       [patientId, doctorUserId]
     );
@@ -1315,7 +1364,7 @@ app.post('/api/doctor/grant', authenticateToken, async (req, res) => {
 
     // --- INSERT 授权记录 ---
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.run(
+    await db.run(
       `INSERT INTO doctor_authorizations
        (patient_id, doctor_id, status, expire_date, requested_at, created_at, updated_at)
        VALUES (?, ?, 'pending', ?, ?, ?, ?)`,
@@ -1324,7 +1373,7 @@ app.post('/api/doctor/grant', authenticateToken, async (req, res) => {
     await saveDb0(db);
 
     // --- 返回授权记录 ---
-    const record = dbGetOne(db,
+    const record = await dbGetOne(db,
       'SELECT id, patient_id, doctor_id, status, expire_date, requested_at, created_at FROM doctor_authorizations WHERE patient_id = ? AND doctor_id = ? ORDER BY id DESC LIMIT 1',
       [patientId, doctorUserId]
     );
@@ -1358,7 +1407,7 @@ app.delete('/api/doctor/revoke', authenticateToken, async (req, res) => {
     }
 
     // --- 查询待撤销的授权 ---
-    const record = dbGetOne(db,
+    const record = await dbGetOne(db,
       'SELECT * FROM doctor_authorizations WHERE patient_id = ? AND doctor_id = ? AND status IN (\'pending\',\'active\')',
       [patientId, doctor_id]
     );
@@ -1369,7 +1418,7 @@ app.delete('/api/doctor/revoke', authenticateToken, async (req, res) => {
 
     // --- UPDATE status = 'revoked' ---
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.run(
+    await db.run(
       "UPDATE doctor_authorizations SET status = 'revoked', updated_at = ? WHERE id = ?",
       [now, record.id]
     );
@@ -1397,7 +1446,7 @@ app.get('/api/doctor/granted', authenticateToken, async (req, res) => {
     const patientId = req.user.id;
 
     // JOIN 查询（不做 SQL 日期过滤，避免 sql.js date('now') 兼容问题）
-    const doctors = dbGetAll(db,
+    const doctors = await dbGetAll(db,
       `SELECT a.id, a.doctor_id, a.status, a.expire_date, a.requested_at,
               u.nickname AS doctor_name, u.phone AS doctor_phone
        FROM doctor_authorizations a
@@ -1447,7 +1496,7 @@ app.put('/api/doctor/confirm', authenticateToken, async (req, res) => {
     }
 
     // --- 查询待确认的授权记录 ---
-    const record = dbGetOne(db,
+    const record = await dbGetOne(db,
       `SELECT * FROM doctor_authorizations
        WHERE doctor_id = ? AND patient_id = ? AND status = 'pending'`,
       [doctorId, patient_id]
@@ -1461,7 +1510,7 @@ app.put('/api/doctor/confirm', authenticateToken, async (req, res) => {
     const today = new Date().toISOString().substring(0, 10);
     if (record.expire_date < today) {
       // 自动标记为 expired
-      db.run(
+      await db.run(
         'UPDATE doctor_authorizations SET status = \'expired\', updated_at = ? WHERE id = ?',
         [new Date().toISOString().replace('T', ' ').substring(0, 19), record.id]
       );
@@ -1471,14 +1520,14 @@ app.put('/api/doctor/confirm', authenticateToken, async (req, res) => {
 
     // --- UPDATE status = 'active'，记录响应时间 ---
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.run(
+    await db.run(
       'UPDATE doctor_authorizations SET status = \'active\', responded_at = ?, updated_at = ? WHERE id = ?',
       [now, now, record.id]
     );
     await saveDb0(db);
 
     // --- 返回更新后的记录 ---
-    const updated = dbGetOne(db,
+    const updated = await dbGetOne(db,
       'SELECT * FROM doctor_authorizations WHERE id = ?',
       [record.id]
     );
@@ -1514,7 +1563,7 @@ app.get('/api/doctor/patients', authenticateToken, async (req, res) => {
     }
 
     // --- JOIN 查询患者在 Pending/Active 状态的授权记录 ---
-    const patients = dbGetAll(db,
+    const patients = await dbGetAll(db,
       `SELECT a.id AS auth_id, a.patient_id, a.status, a.expire_date, a.requested_at,
               u.nickname, u.phone
        FROM doctor_authorizations a
@@ -1535,7 +1584,7 @@ app.get('/api/doctor/patients', authenticateToken, async (req, res) => {
       if (p.expire_date < today) continue;
 
       // 子查询：获取该患者最新的睡眠报告评分
-      var scoreRow = dbGetOne(db,
+      var scoreRow = await dbGetOne(db,
         'SELECT sleep_score FROM sleep_reports WHERE user_id = ? ORDER BY report_date DESC LIMIT 1',
         [p.patient_id]
       );
@@ -1591,7 +1640,7 @@ app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
     }
 
     // --- 权限校验：验证授权状态必须为 active ---
-    const auth = dbGetOne(db,
+    const auth = await dbGetOne(db,
       `SELECT * FROM doctor_authorizations
        WHERE doctor_id = ? AND patient_id = ? AND status = 'active'`,
       [doctorId, patientId]
@@ -1608,7 +1657,7 @@ app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
     }
 
     // --- 查询睡眠报告 ---
-    const report = dbGetOne(db,
+    const report = await dbGetOne(db,
       `SELECT report_id, user_id, report_date, sleep_score, total_minutes,
               deep_minutes, light_minutes, rem_minutes, wake_minutes,
               avg_heart_rate, events_json, sleep_stages_json
@@ -1618,7 +1667,7 @@ app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
     );
 
     if (!report) {
-      const device = dbGetOne(db,
+      const device = await dbGetOne(db,
         'SELECT id FROM devices WHERE user_id = ? LIMIT 1',
         [patientId]
       );
@@ -1633,7 +1682,7 @@ app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
       const emptyJson = '[]';
 
       try {
-        db.run(
+        await db.run(
           `INSERT INTO sleep_reports
            (user_id, device_id, report_date, sleep_score, total_minutes,
             deep_minutes, light_minutes, rem_minutes, wake_minutes,
@@ -1649,7 +1698,7 @@ app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
       } catch (insertErr) {
         if (insertErr.message && insertErr.message.includes('UNIQUE')) {
           // 并发已插入，重新查询
-          const retry = dbGetOne(db,
+          const retry = await dbGetOne(db,
             'SELECT * FROM sleep_reports WHERE user_id = ? AND report_date = ?',
             [patientId, date]
           );
@@ -1666,7 +1715,7 @@ app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
         throw insertErr;
       }
 
-      const newReport = dbGetOne(db,
+      const newReport = await dbGetOne(db,
         'SELECT * FROM sleep_reports WHERE user_id = ? AND report_date = ?',
         [patientId, date]
       );
@@ -1727,7 +1776,7 @@ app.put('/api/doctor/note', authenticateToken, async (req, res) => {
     }
 
     // 验证授权关系必须为 active
-    const auth = dbGetOne(db,
+    const auth = await dbGetOne(db,
       'SELECT id FROM doctor_authorizations WHERE doctor_id = ? AND patient_id = ? AND status = \'active\'',
       [doctorId, patient_id]
     );
@@ -1737,7 +1786,7 @@ app.put('/api/doctor/note', authenticateToken, async (req, res) => {
     }
 
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.run(
+    await db.run(
       'UPDATE doctor_authorizations SET doctor_note = ?, updated_at = ?, note_updated_at = ? WHERE id = ?',
       [note, now, now, auth.id]
     );
@@ -1773,7 +1822,7 @@ app.get('/api/doctor/note', authenticateToken, async (req, res) => {
       return res.json({ code: 1001, message: '请指定患者', data: null });
     }
 
-    const auth = dbGetOne(db,
+    const auth = await dbGetOne(db,
       'SELECT doctor_note FROM doctor_authorizations WHERE doctor_id = ? AND patient_id = ? AND status = \'active\'',
       [doctorId, patientId]
     );
@@ -1804,7 +1853,7 @@ app.get('/api/patient/notes', authenticateToken, async (req, res) => {
     const db = await getDb0();
     const patientId = req.user.id;
 
-    const notes = dbGetAll(db,
+    const notes = await dbGetAll(db,
       `SELECT a.doctor_id, u.nickname AS doctor_name, u.phone AS doctor_phone,
               a.doctor_note AS note, a.note_updated_at
        FROM doctor_authorizations a
@@ -1845,7 +1894,7 @@ app.get('/api/patient/notes/status', authenticateToken, async (req, res) => {
     const db = await getDb0();
     const patientId = req.user.id;
 
-    const row = dbGetOne(db,
+    const row = await dbGetOne(db,
       `SELECT COUNT(*) AS total, MAX(a.note_updated_at) AS latest_time,
               (SELECT u.nickname FROM users u WHERE u.user_id = (
                  SELECT a2.doctor_id FROM doctor_authorizations a2
@@ -1889,7 +1938,7 @@ app.get('/api/users/doctors', async (req, res) => {
     const db = await getDb0();
 
     // 查询 role=1(医生) 且 status=0(正常) 的用户
-    const doctors = dbGetAll(db,
+    const doctors = await dbGetAll(db,
       'SELECT user_id AS id, phone, nickname FROM users WHERE role = 1 AND status = 0 ORDER BY user_id ASC',
       []
     );

@@ -1,4 +1,5 @@
 // pages/login/login.js — 用户登录页面逻辑
+const { BASE_URL } = require('../../utils/config');
 Page({
 
   /**
@@ -67,7 +68,7 @@ Page({
 
     // POST /api/auth/login — 调用后台登录接口
     wx.request({
-      url: 'http://localhost:3000/api/auth/login',
+      url: BASE_URL + '/api/auth/login',
       method: 'POST',
       header: {
         'Content-Type': 'application/json'

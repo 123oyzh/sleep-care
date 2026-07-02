@@ -1,4 +1,5 @@
 // pages/notify/notify.js — 医生建议通知页
+const { BASE_URL } = require('../../utils/config');
 Page({
 
   data: {
@@ -26,7 +27,7 @@ Page({
 
     var self = this;
     wx.request({
-      url: 'http://localhost:3000/api/patient/notes',
+      url: BASE_URL + '/api/patient/notes',
       method: 'GET',
       header: { 'Authorization': 'Bearer ' + token },
       success: function (res) {
