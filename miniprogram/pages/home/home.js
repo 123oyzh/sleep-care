@@ -275,6 +275,13 @@ Page({
   },
 
   /**
+   * 跳转到设备管理页
+   */
+  goToDevices() {
+    wx.navigateTo({ url: '/pages/devices/devices' });
+  },
+
+  /**
    * 跳转到作息设置页
    */
   goToSettings() {

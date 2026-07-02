@@ -75,6 +75,11 @@
       <button bindtap="goToReport">查看详细分期</button>
     </view>
 
+    <!-- 设备管理入口 -->
+    <view class="settings-entry">
+      <button bindtap="goToDevices">设备管理</button>
+    </view>
+
     <!-- 作息设置入口 -->
     <view class="settings-entry">
       <button bindtap="goToSettings">作息设置</button>
