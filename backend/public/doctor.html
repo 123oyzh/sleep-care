@@ -330,11 +330,13 @@
 var TOKEN = localStorage.getItem('doctor_token') || '';
 var doctorName = localStorage.getItem('doctor_name') || '';
 
+var API_BASE = window.location.origin;
+
 function api(path, method, body) {
   var opts = { method: method || 'GET', headers: { 'Content-Type': 'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
   if (body) opts.body = JSON.stringify(body);
-  return fetch('http://localhost:3000' + path, opts).then(function(r) { return r.json(); });
+  return fetch(API_BASE + path, opts).then(function(r) { return r.json(); });
 }
 
 function show(id) {
@@ -519,7 +521,7 @@ function handleRegister() {
   errEl.classList.add('hidden');
 
   // 注册接口是公开的，不传 Authorization 头
-  fetch('http://localhost:3000/api/auth/register', {
+  fetch(API_BASE + '/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: phone, password: password, nickname: name, role: 1 })
