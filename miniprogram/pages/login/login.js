@@ -18,7 +18,7 @@ Page({
     const token = getApp().getToken();
     if (token) {
       // 本地已有 token，免登录直接跳转首页
-      wx.navigateTo({
+      wx.redirectTo({
         url: '/pages/home/home'
       });
     }
@@ -94,8 +94,8 @@ Page({
             title: '登录成功',
             icon: 'success'
           });
-          // 跳转到首页
-          wx.navigateTo({
+          // 跳转到首页（用 redirectTo 关闭登录页）
+          wx.redirectTo({
             url: '/pages/home/home'
           });
         } else {

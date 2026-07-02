@@ -34,8 +34,8 @@ Page({
    */
   onShow() {
     // 已有数据则不复用缓存（onLoad 已处理），后台静默刷新
-    if (this.data.sleepData.sleep_score) {
-      // 有数据 → 不闪白屏，后台刷新
+    if (this.data.sleepData.sleep_score !== undefined && this.data.sleepData.sleep_score !== null) {
+      // 有数据 → 不闪白屏，后台刷新（sleep_score 可能为 0，不能用 truthy 判断）
       this.loadReport({ forceRefresh: true });
     }
     this.loadNotes();
