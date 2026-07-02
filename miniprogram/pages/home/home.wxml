@@ -29,6 +29,16 @@
   <!-- 正常数据展示 -->
   <view class="report-content" wx:else>
 
+    <!-- 医生建议通知条 + 红点 — 点击跳转通知页 -->
+    <view class="note-banner" wx:if="{{hasNotes}}" bindtap="goToNotify">
+      <text class="note-banner-icon">🔔</text>
+      <text class="note-banner-text">您有 {{notes.length}} 条医生建议，点击查看</text>
+      <view class="note-red-dot" wx:if="{{unreadCount > 0}}">
+        <text>{{unreadCount}}</text>
+      </view>
+      <text class="note-banner-arrow">→</text>
+    </view>
+
     <!-- 主卡片 — 睡眠评分（大号数字 + 标签） -->
     <view class="score-card">
       <text class="score-number">{{sleepData.sleep_score || '--'}}</text>

@@ -145,3 +145,49 @@ page {
   padding: 8rpx 0;
   border: 2rpx solid #4A90D9;
 }
+
+/* ========== 医生建议通知条 ========== */
+.note-banner {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 24rpx;
+  border: 2rpx solid #FFCC80;
+}
+
+.note-banner-icon {
+  font-size: 32rpx;
+  margin-right: 12rpx;
+}
+
+.note-banner-text {
+  flex: 1;
+  font-size: 28rpx;
+  color: #E65100;
+  font-weight: 500;
+}
+
+.note-banner-arrow {
+  font-size: 28rpx;
+  color: #E65100;
+}
+
+/* ========== 红点未读数字 ========== */
+.note-red-dot {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  background: #E53935;
+  margin-right: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-red-dot text {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #ffffff;
+}

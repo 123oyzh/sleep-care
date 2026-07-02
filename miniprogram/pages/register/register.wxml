@@ -1,0 +1,4 @@
+<!-- 注册页面模板 -->
+<view class="register-container">
+  <text class="page-title">注册</text>
+</view>

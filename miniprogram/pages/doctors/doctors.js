@@ -2,23 +2,40 @@
 Page({
 
   data: {
-    doctors: [],           // 已授权医生列表
-    doctorPhone: '',    // 输入框中的手机号
-    loading: false,     // 加载状态
-    adding: false       // 添加中状态
+    doctorList: [],           // 可选医生列表
+    authList: [],             // 已授权医生列表
+    selectedDoctorId: null,   // 当前选中的医生 ID
+    selectedDoctorName: '',   // 当前选中的医生姓名
+    loading: true,            // 加载状态
+    adding: false             // 授权中状态
+  },
+
+  onShow() {
+    this.loadDoctors();
+    this.loadAuthList();
   },
 
   /**
-   * 页面显示时刷新列表
+   * GET /api/users/doctors — 获取可选医生列表
    */
-  onShow() {
-    this.loadList();
+  loadDoctors() {
+    var self = this;
+    wx.request({
+      url: 'http://127.0.0.1:3000/api/users/doctors',
+      method: 'GET',
+      success: function (res) {
+        if (res.data && res.data.code === 0) {
+          self.setData({ doctorList: res.data.data || [] });
+        }
+      },
+      fail: function () {}
+    });
   },
 
   /**
    * GET /api/doctor/granted — 获取已授权医生列表
    */
-  loadList() {
+  loadAuthList() {
     var token = getApp().getToken();
     if (!token) {
       wx.navigateTo({ url: '/pages/login/login' });
@@ -35,36 +52,38 @@ Page({
       success: function (res) {
         if (res.data && res.data.code === 0) {
           self.setData({
-            doctors: res.data.data || [],
+            authList: res.data.data || [],
             loading: false
           });
         } else {
-          wx.showToast({
-            title: res.data.message || '获取列表失败',
-            icon: 'none'
-          });
           self.setData({ loading: false });
         }
       },
       fail: function () {
-        wx.showToast({
-          title: '网络请求失败，请检查网络连接',
-          icon: 'none'
-        });
         self.setData({ loading: false });
       }
     });
   },
 
   /**
-   * 手机号输入框双向绑定
+   * 点击医生卡片 — 高亮选中 / 取消选中
    */
-  onPhoneInput(e) {
-    this.setData({ doctorPhone: e.detail.value });
+  selectDoctor(e) {
+    var id = e.currentTarget.dataset.id;
+    if (this.data.selectedDoctorId === id) {
+      this.setData({ selectedDoctorId: null, selectedDoctorName: '' });
+      return;
+    }
+    var list = this.data.doctorList;
+    var name = '';
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) { name = list[i].nickname || ''; break; }
+    }
+    this.setData({ selectedDoctorId: id, selectedDoctorName: name });
   },
 
   /**
-   * POST /api/doctor/grant — 添加医生授权
+   * POST /api/doctor/grant — 授权选中医生（传 doctor_id）
    */
   handleAdd() {
     var token = getApp().getToken();
@@ -73,16 +92,8 @@ Page({
       return;
     }
 
-    var phone = this.data.doctorPhone.trim();
-    if (!phone) {
-      wx.showToast({ title: '请输入医生手机号', icon: 'none' });
-      return;
-    }
-
-    if (!/^\d{11}$/.test(phone)) {
-      wx.showToast({ title: '手机号格式错误', icon: 'none' });
-      return;
-    }
+    var doctorId = this.data.selectedDoctorId;
+    if (!doctorId) return;
 
     this.setData({ adding: true });
 
@@ -94,26 +105,23 @@ Page({
         'Authorization': 'Bearer ' + token,
         'Content-Type': 'application/json'
       },
-      data: { doctor_phone: phone },
+      data: { doctor_id: doctorId },
       success: function (res) {
         if (res.data && res.data.code === 0) {
           wx.showToast({ title: '授权成功', icon: 'success' });
-          // 刷新列表 + 清空输入框
-          self.setData({ doctorPhone: '', adding: false });
-          self.loadList();
-        } else {
-          wx.showToast({
-            title: res.data.message || '添加失败',
-            icon: 'none'
+          self.setData({
+            selectedDoctorId: null,
+            selectedDoctorName: '',
+            adding: false
           });
+          self.loadAuthList();
+        } else {
+          wx.showToast({ title: res.data.message || '授权失败', icon: 'none' });
           self.setData({ adding: false });
         }
       },
       fail: function () {
-        wx.showToast({
-          title: '网络请求失败，请检查网络连接',
-          icon: 'none'
-        });
+        wx.showToast({ title: '网络请求失败', icon: 'none' });
         self.setData({ adding: false });
       }
     });
@@ -121,7 +129,6 @@ Page({
 
   /**
    * DELETE /api/doctor/revoke — 撤销医生授权
-   * @param {Object} e — 事件对象，通过 e.currentTarget.dataset.doctorId 获取 doctor_id
    */
   handleRevoke(e) {
     var token = getApp().getToken();
@@ -132,7 +139,6 @@ Page({
 
     var doctorId = e.currentTarget.dataset.doctorId;
 
-    // 确认弹窗
     var self = this;
     wx.showModal({
       title: '确认撤销',
@@ -151,19 +157,13 @@ Page({
           success: function (res) {
             if (res.data && res.data.code === 0) {
               wx.showToast({ title: '已撤销', icon: 'success' });
-              self.loadList();
+              self.loadAuthList();
             } else {
-              wx.showToast({
-                title: res.data.message || '撤销失败',
-                icon: 'none'
-              });
+              wx.showToast({ title: res.data.message || '撤销失败', icon: 'none' });
             }
           },
           fail: function () {
-            wx.showToast({
-              title: '网络请求失败，请检查网络连接',
-              icon: 'none'
-            });
+            wx.showToast({ title: '网络请求失败', icon: 'none' });
           }
         });
       }

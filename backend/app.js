@@ -177,16 +177,34 @@ app.post('/api/auth/register', async (req, res) => {
     // --- 生成密码哈希 ---
     const passwordHash = bcrypt.hashSync(password, 10);
 
+    // --- 角色处理：从 req.body.role 读取，默认 0 (patient) ---
+    // 支持字符串 ('patient'/'doctor'/'admin') 或整数 (0/1/2)
+    const ROLE_MAP = { patient: 0, doctor: 1, admin: 2 };
+    var userRole = 0;
+    if (req.body.role !== undefined) {
+      var raw = req.body.role;
+      if (typeof raw === 'string' && ROLE_MAP.hasOwnProperty(raw)) {
+        userRole = ROLE_MAP[raw];
+      } else {
+        userRole = parseInt(raw, 10);
+        if (![0, 1, 2].includes(userRole)) {
+          return res.json({ code: 1001, message: '角色参数错误，需为 patient/doctor/admin 或 0/1/2', data: null });
+        }
+      }
+    }
+    if (![0, 1, 2].includes(userRole)) {
+      return res.json({ code: 1001, message: '角色参数错误，需为 0/1/2', data: null });
+    }
+
     // --- 插入新用户 ---
-    // role: 0=普通用户(patient), status: 0=正常
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
     const displayName = nickname && nickname.trim() ? nickname.trim() : '用户';
 
     try {
       db.run(
         `INSERT INTO users (phone, password_hash, nickname, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, 0, 0, ?, ?)`,
-        [phone, passwordHash, displayName, now, now]
+         VALUES (?, ?, ?, ?, 0, ?, ?)`,
+        [phone, passwordHash, displayName, userRole, now, now]
       );
 
       // 持久化到磁盘
@@ -1299,27 +1317,41 @@ app.post('/api/doctor/grant', authenticateToken, async (req, res) => {
   try {
     const db = await getDb0();
     const patientId = req.user.id;
-    const { doctor_phone } = req.body;
+    const { doctor_id, doctor_phone } = req.body;
 
-    // --- 参数校验 ---
-    if (!doctor_phone) {
-      return res.json({ code: 1001, message: '请输入医生手机号', data: null });
-    }
+    var doctorUserId = null;
+    var doctorInfo = null;
 
-    // --- 按 phone + role 查找医生（role: 0=普通, 1=医生, 2=管理员）---
-    const doctor = dbGetOne(db,
-      'SELECT user_id, nickname, phone FROM users WHERE phone = ? AND role = 1',
-      [doctor_phone]
-    );
-
-    if (!doctor) {
-      return res.json({ code: 1001, message: '该手机号不是医生', data: null });
+    // --- 解析医生标识：优先 doctor_id(数字)，其次 doctor_phone(字符串) ---
+    if (doctor_id !== undefined && doctor_id !== null) {
+      // 方式1：通过 doctor_id 直接查找
+      const id = parseInt(doctor_id, 10);
+      doctorInfo = dbGetOne(db,
+        'SELECT user_id, nickname, phone FROM users WHERE user_id = ? AND role = 1',
+        [id]
+      );
+      if (!doctorInfo) {
+        return res.json({ code: 1001, message: '该用户不存在或不是医生', data: null });
+      }
+      doctorUserId = doctorInfo.user_id;
+    } else if (doctor_phone) {
+      // 方式2：通过 doctor_phone 查找（向后兼容）
+      doctorInfo = dbGetOne(db,
+        'SELECT user_id, nickname, phone FROM users WHERE phone = ? AND role = 1',
+        [doctor_phone]
+      );
+      if (!doctorInfo) {
+        return res.json({ code: 1001, message: '该手机号不是医生', data: null });
+      }
+      doctorUserId = doctorInfo.user_id;
+    } else {
+      return res.json({ code: 1001, message: '请指定医生', data: null });
     }
 
     // --- 检查是否已有 pending 或 active 授权 ---
     const existing = dbGetOne(db,
       'SELECT id, status FROM doctor_authorizations WHERE patient_id = ? AND doctor_id = ? AND status IN (\'pending\',\'active\')',
-      [patientId, doctor.user_id]
+      [patientId, doctorUserId]
     );
 
     if (existing) {
@@ -1341,17 +1373,17 @@ app.post('/api/doctor/grant', authenticateToken, async (req, res) => {
       `INSERT INTO doctor_authorizations
        (patient_id, doctor_id, status, expire_date, requested_at, created_at, updated_at)
        VALUES (?, ?, 'pending', ?, ?, ?, ?)`,
-      [patientId, doctor.user_id, expireDateStr, now, now, now]
+      [patientId, doctorUserId, expireDateStr, now, now, now]
     );
     await saveDb0(db);
 
     // --- 返回授权记录 ---
     const record = dbGetOne(db,
       'SELECT id, patient_id, doctor_id, status, expire_date, requested_at, created_at FROM doctor_authorizations WHERE patient_id = ? AND doctor_id = ? ORDER BY id DESC LIMIT 1',
-      [patientId, doctor.user_id]
+      [patientId, doctorUserId]
     );
-    record.doctor_name = doctor.nickname;
-    record.doctor_phone = doctor.phone;
+    record.doctor_name = doctorInfo.nickname;
+    record.doctor_phone = doctorInfo.phone;
 
     res.json({ code: 0, message: '授权申请已发送', data: record });
 
@@ -1717,6 +1749,209 @@ app.get('/api/doctor/patient/data', authenticateToken, async (req, res) => {
 
   } catch (err) {
     console.error('[doctor/patient/data] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * PUT /api/doctor/note — 医生填写/更新对患者的干预建议
+ *
+ * 仅限医生角色调用，且必须存在 active 状态的授权关系。
+ *
+ * 请求体：{ patient_id: number, note: string }
+ * 请求头：Authorization: Bearer <token>
+ */
+app.put('/api/doctor/note', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const doctorId = req.user.id;
+
+    if (req.user.role !== 1) {
+      return res.json({ code: 1002, message: '仅医生可执行此操作', data: null });
+    }
+
+    const { patient_id, note } = req.body;
+
+    if (!patient_id) {
+      return res.json({ code: 1001, message: '请指定患者', data: null });
+    }
+
+    if (note === undefined || note === null) {
+      return res.json({ code: 1001, message: '请填写建议内容', data: null });
+    }
+
+    // 验证授权关系必须为 active
+    const auth = dbGetOne(db,
+      'SELECT id FROM doctor_authorizations WHERE doctor_id = ? AND patient_id = ? AND status = \'active\'',
+      [doctorId, patient_id]
+    );
+
+    if (!auth) {
+      return res.json({ code: 1002, message: '无权操作，请先确认授权', data: null });
+    }
+
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    db.run(
+      'UPDATE doctor_authorizations SET doctor_note = ?, updated_at = ?, note_updated_at = ? WHERE id = ?',
+      [note, now, now, auth.id]
+    );
+    await saveDb0(db);
+
+    res.json({ code: 0, message: '建议已保存', data: { patient_id: patient_id, note: note } });
+
+  } catch (err) {
+    console.error('[doctor/note PUT] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/doctor/note — 获取医生对某患者的干预建议
+ *
+ * 仅限医生角色调用，返回 doctor_note 字段内容。
+ *
+ * 查询参数：patient_id (必填)
+ * 请求头：Authorization: Bearer <token>
+ */
+app.get('/api/doctor/note', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const doctorId = req.user.id;
+
+    if (req.user.role !== 1) {
+      return res.json({ code: 1002, message: '仅医生可查看', data: null });
+    }
+
+    const patientId = parseInt(req.query.patient_id, 10);
+    if (!patientId) {
+      return res.json({ code: 1001, message: '请指定患者', data: null });
+    }
+
+    const auth = dbGetOne(db,
+      'SELECT doctor_note FROM doctor_authorizations WHERE doctor_id = ? AND patient_id = ? AND status = \'active\'',
+      [doctorId, patientId]
+    );
+
+    if (!auth) {
+      return res.json({ code: 1002, message: '未找到有效授权', data: null });
+    }
+
+    res.json({
+      code: 0,
+      message: 'success',
+      data: { patient_id: patientId, note: auth.doctor_note || '' }
+    });
+
+  } catch (err) {
+    console.error('[doctor/note GET] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/patient/notes — 患者获取医生对自己的干预建议
+ *
+ * 患者端调用，无需医生角色。返回所有 active 授权中 doctor_note 非空的记录。
+ */
+app.get('/api/patient/notes', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const patientId = req.user.id;
+
+    const notes = dbGetAll(db,
+      `SELECT a.doctor_id, u.nickname AS doctor_name, u.phone AS doctor_phone,
+              a.doctor_note AS note, a.note_updated_at
+       FROM doctor_authorizations a
+       JOIN users u ON a.doctor_id = u.user_id
+       WHERE a.patient_id = ?
+         AND a.status = 'active'
+         AND a.doctor_note IS NOT NULL
+         AND a.doctor_note != ''
+       ORDER BY a.note_updated_at DESC`,
+      [patientId]
+    );
+
+    // 手机号脱敏
+    var result = notes.map(function (n) {
+      var phone = n.doctor_phone || '';
+      if (phone.length === 11) {
+        n.doctor_phone = phone.substring(0, 3) + '****' + phone.substring(7);
+      }
+      return n;
+    });
+
+    res.json({ code: 0, message: 'success', data: result });
+
+  } catch (err) {
+    console.error('[patient/notes] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+/**
+ * GET /api/patient/notes/status — 轻量未读建议检查（供轮询使用）
+ *
+ * 返回极简数据：总条数 + 最新更新时间 + 最新医生名，带宽极小。
+ * 配合 localStorage 的 note_last_read_at 实现红点未读判断。
+ */
+app.get('/api/patient/notes/status', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDb0();
+    const patientId = req.user.id;
+
+    const row = dbGetOne(db,
+      `SELECT COUNT(*) AS total, MAX(a.note_updated_at) AS latest_time,
+              (SELECT u.nickname FROM users u WHERE u.user_id = (
+                 SELECT a2.doctor_id FROM doctor_authorizations a2
+                 WHERE a2.patient_id = ? AND a2.status = 'active'
+                   AND a2.doctor_note IS NOT NULL AND a2.doctor_note != ''
+                 ORDER BY a2.note_updated_at DESC LIMIT 1
+              )) AS latest_doctor_name
+       FROM doctor_authorizations a
+       WHERE a.patient_id = ? AND a.status = 'active'
+         AND a.doctor_note IS NOT NULL AND a.doctor_note != ''`,
+      [patientId, patientId]
+    );
+
+    res.json({
+      code: 0,
+      message: 'success',
+      data: {
+        total: row ? row.total : 0,
+        latest_note_updated_at: row ? row.latest_time : null,
+        latest_doctor_name: row ? row.latest_doctor_name : null
+      }
+    });
+
+  } catch (err) {
+    console.error('[patient/notes/status] 异常:', err.message);
+    res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
+  }
+});
+
+// ============================================================
+// 公开接口
+// ============================================================
+
+/**
+ * GET /api/users/doctors — 获取所有已注册的医生列表
+ *
+ * 公开接口，无需认证。查询所有 role=1 且 status=0 的医生用户。
+ */
+app.get('/api/users/doctors', async (req, res) => {
+  try {
+    const db = await getDb0();
+
+    // 查询 role=1(医生) 且 status=0(正常) 的用户
+    const doctors = dbGetAll(db,
+      'SELECT user_id AS id, phone, nickname FROM users WHERE role = 1 AND status = 0 ORDER BY user_id ASC',
+      []
+    );
+
+    res.json({ code: 0, message: 'success', data: doctors });
+
+  } catch (err) {
+    console.error('[users/doctors] 异常:', err.message);
     res.status(500).json({ code: 9999, message: '服务器内部错误', data: null });
   }
 });

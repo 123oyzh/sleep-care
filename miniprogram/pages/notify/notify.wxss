@@ -1,0 +1,93 @@
+/* 医生建议通知页样式 */
+
+page {
+  height: 100vh;
+  overflow-y: auto;
+  background-color: #f5f7fa;
+}
+
+.notify-container {
+  min-height: 100vh;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+
+/* 加载 / 空数据 */
+.loading-box,
+.empty-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400rpx;
+}
+.loading-text,
+.empty-text {
+  font-size: 28rpx;
+  color: #999999;
+}
+
+/* 卡片 */
+.card {
+  background: #ffffff;
+  border-radius: 24rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.04);
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+}
+
+/* 建议卡片 */
+.note-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #f0f2f5;
+}
+
+.note-doctor-info {
+  display: flex;
+  align-items: center;
+}
+
+.note-doctor-icon {
+  font-size: 36rpx;
+  margin-right: 12rpx;
+}
+
+.note-doctor-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #4A90D9;
+  margin-right: 12rpx;
+}
+
+.note-doctor-phone {
+  font-size: 24rpx;
+  color: #8da4c1;
+}
+
+.note-time {
+  font-size: 22rpx;
+  color: #b0bec5;
+  white-space: nowrap;
+}
+
+.note-body {
+  margin-bottom: 16rpx;
+}
+
+.note-content {
+  font-size: 28rpx;
+  color: #5b7094;
+  line-height: 1.7;
+}
+
+.note-card-footer {
+  text-align: right;
+}
+
+.note-tap-hint {
+  font-size: 24rpx;
+  color: #4A90D9;
+}

@@ -1,0 +1,2 @@
+.register-container { min-height: 100vh; background-color: #f5f7fa; padding: 30rpx; }
+.page-title { font-size: 36rpx; font-weight: 700; color: #1a3a6b; }

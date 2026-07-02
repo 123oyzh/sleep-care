@@ -208,6 +208,55 @@
     }
 
     .hidden { display: none !important; }
+
+    /* ── 切换链接 ── */
+    .toggle-link {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 14px;
+      color: #8da4c1;
+    }
+    .toggle-link a {
+      color: #4A90D9;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color .2s;
+    }
+    .toggle-link a:hover { color: #357ABD; }
+
+    /* ── 干预建议区域 ── */
+    .note-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid #f0f2f5; }
+    .note-section h3 { font-size: 16px; color: #1a3a6b; margin-bottom: 14px; }
+    .note-section textarea {
+      width: 100%;
+      height: 120px;
+      border: 2px solid #eef1f6;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 14px;
+      color: #1a3a6b;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      transition: border-color .25s;
+    }
+    .note-section textarea:focus { border-color: #4A90D9; }
+    .btn-save-note {
+      width: 100%;
+      height: 44px;
+      margin-top: 12px;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(135deg, #4A90D9 0%, #357ABD 100%);
+      box-shadow: 0 3px 10px rgba(74,144,217,0.2);
+      transition: transform .15s;
+    }
+    .btn-save-note:hover { transform: translateY(-1px); }
   </style>
 </head>
 <body>
@@ -226,6 +275,21 @@
       <div class="input-group"><input type="password" id="password" placeholder="密码" autocomplete="current-password"></div>
       <button class="btn" onclick="handleLogin()">登 录</button>
       <div id="loginError" class="error-box hidden"></div>
+      <div class="toggle-link">还没有账号？<a onclick="showRegister()">去注册</a></div>
+    </div>
+  </div>
+
+  <!-- 注册视图 -->
+  <div id="view-register" class="hidden">
+    <div class="card">
+      <div class="card-header"><h2>医生注册</h2></div>
+      <div class="input-group"><input type="text" id="regName" placeholder="姓名" maxlength="20"></div>
+      <div class="input-group"><input type="tel" id="regPhone" placeholder="手机号" maxlength="11"></div>
+      <div class="input-group"><input type="password" id="regPassword" placeholder="密码（至少6位）"></div>
+      <div class="input-group"><input type="password" id="regPassword2" placeholder="确认密码"></div>
+      <button class="btn" onclick="handleRegister()">注 册</button>
+      <div id="registerError" class="error-box hidden"></div>
+      <div class="toggle-link">已有账号？<a onclick="showLogin()">去登录</a></div>
     </div>
   </div>
 
@@ -275,16 +339,29 @@ function api(path, method, body) {
 
 function show(id) {
   document.getElementById('view-login').classList.add('hidden');
+  document.getElementById('view-register').classList.add('hidden');
   document.getElementById('view-main').classList.add('hidden');
   document.getElementById('view-list').classList.add('hidden');
   document.getElementById('view-report').classList.add('hidden');
   if (id === 'login') {
     document.getElementById('view-login').classList.remove('hidden');
+  } else if (id === 'register') {
+    document.getElementById('view-register').classList.remove('hidden');
   } else {
     document.getElementById('view-main').classList.remove('hidden');
     if (id === 'list') document.getElementById('view-list').classList.remove('hidden');
     if (id === 'report') document.getElementById('view-report').classList.remove('hidden');
   }
+}
+
+function showRegister() {
+  document.getElementById('registerError').classList.add('hidden');
+  show('register');
+}
+
+function showLogin() {
+  document.getElementById('loginError').classList.add('hidden');
+  show('login');
 }
 
 (function init() {
@@ -393,8 +470,14 @@ function loadReport() {
         '<div class="metric-item"><div class="val">' + awakeCount + '</div><div class="lbl">觉醒次数</div></div>' +
         '<div class="metric-item"><div class="val">' + (r.avg_heart_rate || 0) + '</div><div class="lbl">平均心率</div></div>' +
       '</div>' +
-      '<div class="chart-section"><h3>📈 7天评分趋势</h3><div id="trendChart"></div></div>';
+      '<div class="chart-section"><h3>📈 7天评分趋势</h3><div id="trendChart"></div></div>' +
+      '<div class="note-section">' +
+        '<h3>📝 干预建议</h3>' +
+        '<textarea id="noteTextarea" placeholder="输入对该患者的干预建议..."></textarea>' +
+        '<button class="btn-save-note" onclick="saveNote()">保存建议</button>' +
+      '</div>';
     loadTrendChart();
+    loadNote();
   }).catch(function() { el.innerHTML = '<div class="error-box">网络请求失败</div>'; });
 }
 
@@ -419,6 +502,68 @@ function loadTrendChart() {
     });
     window.addEventListener('resize', function() { chart.resize(); });
   }).catch(function() {});
+}
+
+function handleRegister() {
+  var name = document.getElementById('regName').value.trim();
+  var phone = document.getElementById('regPhone').value.trim();
+  var password = document.getElementById('regPassword').value.trim();
+  var password2 = document.getElementById('regPassword2').value.trim();
+  var errEl = document.getElementById('registerError');
+
+  if (!name) { errEl.textContent = '请输入姓名'; errEl.classList.remove('hidden'); return; }
+  if (!phone || !/^\d{11}$/.test(phone)) { errEl.textContent = '请输入正确的11位手机号'; errEl.classList.remove('hidden'); return; }
+  if (!password || password.length < 6) { errEl.textContent = '密码至少6位'; errEl.classList.remove('hidden'); return; }
+  if (password !== password2) { errEl.textContent = '两次密码不一致'; errEl.classList.remove('hidden'); return; }
+
+  errEl.classList.add('hidden');
+
+  // 注册接口是公开的，不传 Authorization 头
+  fetch('http://localhost:3000/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: phone, password: password, nickname: name, role: 1 })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    if (res.code === 0) {
+      alert('注册成功，请登录');
+      // 自动切换到登录视图并填充手机号
+      document.getElementById('phone').value = phone;
+      document.getElementById('password').value = '';
+      show('login');
+    } else {
+      errEl.textContent = res.message || '注册失败';
+      errEl.classList.remove('hidden');
+    }
+  })
+  .catch(function() {
+    errEl.textContent = '网络请求失败，请检查服务器连接';
+    errEl.classList.remove('hidden');
+  });
+}
+
+function loadNote() {
+  api('/api/doctor/note?patient_id=' + currentPatientId).then(function(res) {
+    if (res.code === 0 && res.data) {
+      var ta = document.getElementById('noteTextarea');
+      if (ta) ta.value = res.data.note || '';
+    }
+  }).catch(function() {});
+}
+
+function saveNote() {
+  var ta = document.getElementById('noteTextarea');
+  if (!ta) return;
+  api('/api/doctor/note', 'PUT', { patient_id: currentPatientId, note: ta.value })
+    .then(function(res) {
+      if (res.code === 0) {
+        alert('已保存');
+      } else {
+        alert(res.message || '保存失败');
+      }
+    })
+    .catch(function() { alert('网络请求失败'); });
 }
 
 function escapeHtml(str) {

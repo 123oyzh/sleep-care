@@ -97,6 +97,9 @@ async function initSchema0() {
   try { db.run("ALTER TABLE sleep_reports ADD COLUMN noise_json TEXT;"); } catch (_) {}
   try { db.run("ALTER TABLE sleep_reports ADD COLUMN sleep_stages_json TEXT;"); } catch (_) {}
 
+  // 兼容已有数据库：尝试添加 note_updated_at 列（若已存在则忽略错误）
+  try { db.run("ALTER TABLE doctor_authorizations ADD COLUMN note_updated_at TEXT;"); } catch (_) {}
+
   // 高频查询索引：按用户+日期查询每日报告
   db.run(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_report_user_date

@@ -225,4 +225,21 @@
     </view>
   </view>
 
+  <!-- 医生建议 — 患者查看医生写的干预建议 -->
+  <view class="section-card card" wx:if="{{notes && notes.length > 0}}">
+    <view class="section-header">
+      <text class="section-title">📝 医生建议</text>
+    </view>
+    <view class="event-list">
+      <view class="event-item" wx:for="{{notes}}" wx:key="doctor_id">
+        <view class="event-icon">💬</view>
+        <view class="event-body">
+          <text class="event-type">{{item.doctor_name}}</text>
+          <text class="event-time">{{item.note}}</text>
+          <text class="doctor-note-time" wx:if="{{item.note_updated_at}}">更新于 {{item.note_updated_at}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
 </view>

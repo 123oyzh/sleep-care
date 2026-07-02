@@ -1,12 +1,14 @@
 {
   "pages": [
     "pages/login/login",
+    "pages/register/register",
     "home/home",
     "pages/home/home",
     "pages/devices/devices",
     "pages/report/report",
     "pages/settings/settings",
-    "pages/doctors/doctors"
+    "pages/doctors/doctors",
+    "pages/notify/notify"
   ],
   "window": {
     "navigationBarTitleText": "智能睡眠管理",

@@ -1,68 +1,87 @@
 <!--
   医生授权页面模板
-  展示已授权医生列表 + 添加新医生
-  数据由 doctors.js 调用 GET/POST/DELETE /api/doctor/* 接口获取
+  上方：选择要授权的医生列表（GET /api/users/doctors）
+  下方：已授权医生列表（GET /api/doctor/granted）含撤销按钮
 -->
 <view class="doctors-container">
-
-  <!-- 页面标题 — "已授权医生" -->
-  <view class="page-header">
-    <text class="page-title">已授权医生</text>
-  </view>
 
   <!-- 加载中状态 -->
   <view class="loading-box" wx:if="{{loading}}">
     <text class="loading-text">加载中...</text>
   </view>
 
-  <!-- 医生列表 — 数据为空时显示提示 -->
-  <view class="empty-box" wx:elif="{{doctors.length === 0}}">
-    <text class="empty-text">暂无授权医生，请在下方添加</text>
-  </view>
+  <view class="doctors-content" wx:else>
 
-  <!-- 医生卡片列表 — wx:for 循环渲染 -->
-  <view class="doctors-list" wx:else>
-    <view
-      class="doctor-card card"
-      wx:for="{{doctors}}"
-      wx:key="id"
-    >
-      <!-- 医生基本信息 -->
-      <view class="doctor-info">
-        <view class="doctor-name-row">
-          <text class="doctor-name">{{item.doctor_name || '未知医生'}}</text>
-          <text class="status-tag status-{{item.status}}">
-            {{item.status === 'pending' ? '待确认' : (item.status === 'active' ? '已授权' : item.status)}}
-          </text>
+    <!-- ========== 选择要授权的医生 ========== -->
+    <view class="section-block">
+      <view class="section-header">
+        <text class="section-title">选择要授权的医生</text>
+      </view>
+
+      <view class="empty-box" wx:if="{{doctorList.length === 0}}">
+        <text class="empty-text">暂无可用医生</text>
+      </view>
+
+      <view class="doctor-select-list" wx:else>
+        <view
+          class="doctor-select-card card {{selectedDoctorId === item.id ? 'card--selected' : ''}}"
+          wx:for="{{doctorList}}"
+          wx:key="id"
+          bindtap="selectDoctor"
+          data-id="{{item.id}}"
+        >
+          <view class="doctor-select-info">
+            <text class="doctor-name">{{item.nickname || '未知'}}</text>
+            <text class="doctor-phone">📱 {{item.phone || ''}}</text>
+          </view>
+          <view class="check-mark" wx:if="{{selectedDoctorId === item.id}}">✓</view>
         </view>
-        <text class="doctor-phone">{{item.doctor_phone || ''}}</text>
-        <text class="doctor-expire">授权至 {{item.expire_date || '—'}}</text>
-      </view>
-
-      <!-- 撤销按钮 — 传入 doctor_id -->
-      <view class="doctor-action">
-        <button
-          class="btn-revoke"
-          bindtap="handleRevoke"
-          data-doctor-id="{{item.doctor_id}}"
-        >撤销</button>
       </view>
     </view>
-  </view>
 
-  <!-- 底部添加区域 — 输入框 + 添加按钮 -->
-  <view class="add-section">
-    <view class="add-input-row">
-      <input
-        class="phone-input"
-        type="number"
-        maxlength="11"
-        placeholder="请输入医生手机号"
-        value="{{doctorPhone}}"
-        bindinput="onPhoneInput"
-      />
-      <button class="btn-add" bindtap="handleAdd">添加</button>
+    <!-- ========== 底部授权按钮 — 显示选中医生姓名 ========== -->
+    <view class="grant-bar" wx:if="{{selectedDoctorId}}">
+      <text class="grant-label">已选择：{{selectedDoctorName || ''}}</text>
+      <button class="btn-grant" bindtap="handleAdd">授权</button>
     </view>
+
+    <!-- ========== 已授权医生列表 ========== -->
+    <view class="section-block">
+      <view class="section-header">
+        <text class="section-title">已授权医生</text>
+      </view>
+
+      <view class="empty-box" wx:if="{{authList.length === 0}}">
+        <text class="empty-text">暂无授权医生</text>
+      </view>
+
+      <view class="granted-list" wx:else>
+        <view
+          class="granted-card card"
+          wx:for="{{authList}}"
+          wx:key="id"
+        >
+          <view class="granted-info">
+            <view class="doctor-name-row">
+              <text class="doctor-name">{{item.doctor_name || '未知医生'}}</text>
+              <text class="status-tag status-{{item.status}}">
+                {{item.status === 'pending' ? '待确认' : (item.status === 'active' ? '已授权' : item.status)}}
+              </text>
+            </view>
+            <text class="doctor-phone">{{item.doctor_phone || ''}}</text>
+            <text class="doctor-expire">授权至 {{item.expire_date || '—'}}</text>
+          </view>
+          <view class="granted-action">
+            <button
+              class="btn-revoke"
+              bindtap="handleRevoke"
+              data-doctor-id="{{item.doctor_id}}"
+            >撤销</button>
+          </view>
+        </view>
+      </view>
+    </view>
+
   </view>
 
 </view>

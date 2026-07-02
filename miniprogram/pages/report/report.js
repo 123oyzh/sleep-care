@@ -10,6 +10,7 @@ Page({
     noiseData: null,      // 环境噪音数据 { noise: [], labels: [] }
     loading: true,        // 加载中标识
     errorMsg: '',         // 错误提示文字
+    notes: [],            // 医生建议列表
 
     // 日周月视图切换
     currentPeriod: 'day',       // 趋势视图：day / week / month
@@ -46,6 +47,7 @@ Page({
     this.loadStages();
     this.loadNoise();
     this.loadSummary();
+    this.loadNotes();
   },
 
   /**
@@ -433,6 +435,31 @@ Page({
           }
         }
       }]
+    });
+  },
+
+  // ================================================================
+  // 医生建议
+  // ================================================================
+
+  /**
+   * GET /api/patient/notes — 获取医生对自己的干预建议
+   */
+  loadNotes() {
+    var token = getApp().getToken();
+    if (!token) return;
+
+    var self = this;
+    wx.request({
+      url: 'http://localhost:3000/api/patient/notes',
+      method: 'GET',
+      header: { 'Authorization': 'Bearer ' + token },
+      success: function (res) {
+        if (res.data && res.data.code === 0) {
+          self.setData({ notes: res.data.data || [] });
+        }
+      },
+      fail: function () {}
     });
   }
 });

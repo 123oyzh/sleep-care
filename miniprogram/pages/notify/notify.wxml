@@ -1,0 +1,34 @@
+<!-- 医生建议通知页 — 展示所有医生建议列表 -->
+<view class="notify-container">
+
+  <!-- 加载中 -->
+  <view class="loading-box" wx:if="{{loading}}">
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- 空数据 -->
+  <view class="empty-box" wx:elif="{{notes.length === 0}}">
+    <text class="empty-text">暂无医生建议</text>
+  </view>
+
+  <!-- 建议列表 -->
+  <view class="notes-list" wx:else>
+    <view class="note-card card" wx:for="{{notes}}" wx:key="doctor_id" bindtap="goToReport" data-doctor-id="{{item.doctor_id}}">
+      <view class="note-card-header">
+        <view class="note-doctor-info">
+          <text class="note-doctor-icon">💬</text>
+          <text class="note-doctor-name">{{item.doctor_name || '医生'}}</text>
+          <text class="note-doctor-phone">{{item.doctor_phone || ''}}</text>
+        </view>
+        <text class="note-time">{{item.note_updated_at || ''}}</text>
+      </view>
+      <view class="note-body">
+        <text class="note-content">{{item.note || ''}}</text>
+      </view>
+      <view class="note-card-footer">
+        <text class="note-tap-hint">点击查看完整报告 →</text>
+      </view>
+    </view>
+  </view>
+
+</view>

@@ -453,3 +453,10 @@ page {
   font-size: 24rpx;
   color: #8da4c1;
 }
+
+/* 医生建议更新时间 */
+.doctor-note-time {
+  font-size: 22rpx;
+  color: #b0bec5;
+  margin-top: 6rpx;
+}
